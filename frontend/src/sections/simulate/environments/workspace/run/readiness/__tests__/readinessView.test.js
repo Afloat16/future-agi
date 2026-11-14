@@ -244,3 +244,20 @@ describe("fixEndCard", () => {
     });
   });
 });
+
+describe("held back by", () => {
+  it("lists each blocked row that holds cases back, with how many, and the workers", () => {
+    const view = readinessView({
+      rows: [
+        { id: "worker:refund", area: "workers", status: "blocked", affected: { count: 2 } },
+        { id: "tool_binding", area: "tool_binding", status: "blocked", affected: { count: 0 } },
+        { id: "grading", area: "grading", status: "partial", affected: { count: 3 } },
+      ],
+      workers: [{ worker_id: "refund", name: "Refund worker" }],
+    });
+    expect(view.heldBy).toEqual([
+      { id: "worker:refund", area: "workers", count: 2, reason: null },
+    ]);
+    expect(view.workers).toHaveLength(1);
+  });
+});

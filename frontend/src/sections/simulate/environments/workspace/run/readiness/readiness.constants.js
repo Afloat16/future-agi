@@ -145,6 +145,8 @@ export const RUN_PLAN_COPY = {
   allHeld: (label) =>
     `Every selected scenario waits on a fix${label ? `: ${label.toLowerCase()}` : ""}`,
   runOf: (will, requested) => `Run ${will} of ${requested}`,
+  // One line per row that holds cases back.
+  heldBackBy: (count, why) => `${count} held back: ${why}`,
   // The builder chat's card when a fix ends.
   fixEnd: {
     open: (labels) =>

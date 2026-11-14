@@ -121,6 +121,19 @@ export function readinessView(report) {
       untested: selection.untested ?? 0,
     },
     open,
+    // Each blocked row that holds selected cases back, with how many: the run popup names each one.
+    heldBy: (report?.rows || [])
+      .filter(
+        (row) => row.status === "blocked" && (row.affected?.count ?? 0) > 0,
+      )
+      .map((row) => ({
+        id: row.id,
+        area: row.area ?? null,
+        count: row.affected.count,
+        reason: row.reason ?? null,
+      })),
+    // The declared workers' readiness, so a `worker:<id>` hold reads by name.
+    workers: report?.workers || [],
     // The server sends fix_groups only once it supports fixes.
     grouped: Boolean(report?.fix_groups),
     fixMessage: report?.fix_groups?.builder?.message ?? null,

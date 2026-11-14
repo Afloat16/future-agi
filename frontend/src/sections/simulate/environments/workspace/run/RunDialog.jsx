@@ -32,7 +32,7 @@ import { DRAFTS_COPY, RUN_DIALOG_COPY as COPY } from "../workspace.constants";
 import { inlineRunError, planRefusal } from "./runErrors";
 import ReadyToRunSection from "./readiness/ReadyToRunSection";
 import CountTip from "./readiness/CountTip";
-import { readinessView } from "./readiness/readinessView";
+import { readinessView, workerHeldBackReason } from "./readiness/readinessView";
 import { RUN_PLAN_PROMPTS_COPY as PROMPTS } from "./runPlanPrompts.constants";
 import {
   READY_TO_RUN_COPY,
@@ -338,6 +338,17 @@ export default function RunDialog({
     (line) => line.status === "blocked",
   )?.area;
   const blockingLabel = READY_TO_RUN_COPY.areas[blockingArea];
+  // Why each held-back case waits: a worker by name, else the row's area, else its own reason.
+  const heldReasons = (readiness?.heldBy || []).map((row) => ({
+    id: row.id,
+    text: RUN_PLAN_COPY.heldBackBy(
+      row.count,
+      workerHeldBackReason(row.id, readiness.workers) ||
+        READY_TO_RUN_COPY.areas[row.area] ||
+        row.reason ||
+        row.id,
+    ),
+  }));
 
   const canSubmit =
     !submitting &&
@@ -616,6 +627,16 @@ export default function RunDialog({
                   {RUN_PLAN_COPY.heldBack(held, blockingLabel)}
                 </Typography>
               )}
+              {heldBack &&
+                heldReasons.map((one) => (
+                  <Typography
+                    key={one.id}
+                    data-testid="run-held-back-reason"
+                    sx={{ typography: "s3", color: "text.secondary" }}
+                  >
+                    {one.text}
+                  </Typography>
+                ))}
             </Stack>
           )}
           {drafts?.any && !readiness?.grouped && (

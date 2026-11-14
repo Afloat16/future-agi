@@ -180,6 +180,20 @@ describe("RunDialog with Ready to run", () => {
     expect(screen.getByText("2 selected scenarios")).toBeInTheDocument();
   });
 
+  it("names the worker whose limits hold a case back", () => {
+    state.view = {
+      ...view({ requested: 3, blocked: 1 }),
+      heldBy: [{ id: "worker:refund", area: "workers", count: 1, reason: "x" }],
+      workers: [
+        { worker_id: "refund", name: "Refund worker", status: "blocked" },
+      ],
+    };
+    renderDialog();
+    expect(screen.getByTestId("run-held-back-reason")).toHaveTextContent(
+      "1 held back: Refund worker's limits are not held",
+    );
+  });
+
   it("turns Run off while the versions are being checked together", () => {
     state.view = view({ canRun: false });
     renderDialog();
