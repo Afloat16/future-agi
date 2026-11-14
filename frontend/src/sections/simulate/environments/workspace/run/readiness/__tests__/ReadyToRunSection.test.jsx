@@ -365,6 +365,36 @@ describe("ReadyToRunSection", () => {
     );
   });
 
+  it("counts a blocked worker in the header, so it never reads No blocker beside it", () => {
+    report = {
+      ...blockedReport("pair"),
+      answer: { kind: "ready" },
+      areas: [],
+      rows: [],
+      workers: [
+        {
+          worker_id: "refund",
+          name: "Refund worker",
+          status: "blocked",
+          reason: "x",
+          tools: [],
+          bypassed: [],
+        },
+        {
+          worker_id: "lookup",
+          name: "Lookup",
+          status: "partial",
+          reason: "y",
+          tools: [],
+          bypassed: [],
+        },
+      ],
+    };
+    render(<ReadyToRunSection envId="env-1" picks={picks} />);
+    expect(screen.getByText("· 1 blocker to fix")).toBeVisible();
+    expect(screen.queryByText("· No blocker")).toBeNull();
+  });
+
   it("opens a fix with the server's instruction and re-checks the pair", async () => {
     report = blockedReport("pair");
     cases.names = ["A", "B", "C", "D"];
