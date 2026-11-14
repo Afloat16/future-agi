@@ -1,4 +1,8 @@
-import { READY_TO_RUN_COPY, RUN_PLAN_COPY } from "./readiness.constants";
+import {
+  READY_TO_RUN_COPY,
+  RUN_PLAN_COPY,
+  WORKER_COPY,
+} from "./readiness.constants";
 import { RUN_PLAN_PROMPTS_COPY } from "../runPlanPrompts.constants";
 
 // Worst first: an area reads as its worst counted row.
@@ -165,4 +169,15 @@ export function fixEndCard(fix, report) {
           .filter(Boolean)
           .join(". ");
   return { text, action: copy.openPlan };
+}
+
+/**
+ * A held-back reason the run plan gives as `worker:<id>`, in words: the worker's
+ * limits are not held. Null for any other reason.
+ */
+export function workerHeldBackReason(reason, workers) {
+  if (typeof reason !== "string" || !reason.startsWith("worker:")) return null;
+  const id = reason.slice("worker:".length);
+  const worker = (workers || []).find((one) => one.worker_id === id);
+  return WORKER_COPY.heldBack(worker?.name || id);
 }

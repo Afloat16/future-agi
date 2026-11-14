@@ -154,3 +154,21 @@ export const RUN_PLAN_COPY = {
     review: "Review and start run",
   },
 };
+
+// Run readiness per declared worker. A worker's limit is held at the world on its own channel only (workers share
+// the app's one process), so nothing here ever says "Enforced".
+export const WORKER_COPY = {
+  heading: "Participants and tools",
+  heldCooperative: "Held at the world (cooperative)",
+  allowed: "Allowed",
+  blocked: "Blocked",
+  notEnforced: "Not enforced",
+  columns: { tool: "Tool", action: "World action", boundary: "Boundary" },
+  noRoute: "No route",
+  bypassed: (n) =>
+    `Reached the world without its own channel in ${n} recent call${n === 1 ? "" : "s"}`,
+  showTools: (name) => `Show ${name}'s tools`,
+  hideTools: (name) => `Hide ${name}'s tools`,
+  // The run dialog's reason for a case held back by `worker:<id>`.
+  heldBack: (name) => `${name}'s limits are not held`,
+};

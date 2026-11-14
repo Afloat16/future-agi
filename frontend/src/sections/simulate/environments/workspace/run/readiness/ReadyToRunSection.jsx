@@ -46,6 +46,7 @@ import {
 import { AGENT_VERSIONS_COPY } from "../../workspace.constants";
 import { fToNow } from "src/utils/format-time";
 import { readinessView } from "./readinessView";
+import WorkerBoundaries from "./WorkerBoundaries";
 import { READY_TO_RUN_COPY as COPY } from "./readiness.constants";
 import * as fixDummy from "src/api/simulate-environments/readinessFix.dummy"; // dummy:
 
@@ -961,6 +962,7 @@ export default function ReadyToRunSection({
           </Typography>
         </Stack>
       ))}
+      <WorkerBoundaries workers={readiness.data?.workers} dimmed={checking} />
       {view.grading.notGradable > 0 && (
         <Stack direction="row" spacing={1} alignItems="center" sx={dimSx}>
           <StatusBadge
