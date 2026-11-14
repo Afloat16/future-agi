@@ -160,6 +160,13 @@ export const RUN_PLAN_COPY = {
 export const WORKER_COPY = {
   heading: "Participants and tools",
   heldCooperative: "Held at the world (cooperative)",
+  // A worker's status word when it is not held on its own channel.
+  status: {
+    blocked: "Blocked",
+    unavailable: "Unavailable",
+    untested: "Untested",
+    partial: "Partial",
+  },
   allowed: "Allowed",
   blocked: "Blocked",
   notEnforced: "Not enforced",

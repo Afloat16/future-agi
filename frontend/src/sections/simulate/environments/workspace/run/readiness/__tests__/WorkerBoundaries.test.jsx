@@ -44,6 +44,9 @@ describe("WorkerBoundaries", () => {
     expect(
       screen.getByText("Held at the world (cooperative)"),
     ).toBeInTheDocument();
+    // A worker not held on its own channel reads its status word, never just its name again.
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(screen.getAllByText("Refund worker")).toHaveLength(1);
     expect(
       screen.getByText(
         "Reached the world without its own channel in 1 recent call",

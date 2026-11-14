@@ -22,7 +22,7 @@ const BOUNDARY = {
 const statusLabel = (worker) =>
   worker.reason_code === "held_at_world_cooperative"
     ? COPY.heldCooperative
-    : worker.name;
+    : COPY.status[worker.status] || worker.status;
 
 function WorkerRow({ worker, dimmed }) {
   const [open, setOpen] = useState(false);
