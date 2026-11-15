@@ -249,13 +249,14 @@ describe("held back by", () => {
   it("lists each blocked row that holds cases back, with how many, and the workers", () => {
     const view = readinessView({
       rows: [
-        { id: "worker:refund", area: "workers", status: "blocked", affected: { count: 2 } },
-        { id: "tool_binding", area: "tool_binding", status: "blocked", affected: { count: 0 } },
+        { id: "tool_binding", area: "tool_binding", status: "blocked", affected: { count: 1 } },
         { id: "grading", area: "grading", status: "partial", affected: { count: 3 } },
       ],
-      workers: [{ worker_id: "refund", name: "Refund worker" }],
+      workers: [{ worker_id: "refund", name: "Refund worker", status: "blocked" }],
+      selection: { blocked: 3, held_by_workers: { refund: 2 } },
     });
     expect(view.heldBy).toEqual([
+      { id: "tool_binding", area: "tool_binding", count: 1, reason: null },
       { id: "worker:refund", area: "workers", count: 2, reason: null },
     ]);
     expect(view.workers).toHaveLength(1);

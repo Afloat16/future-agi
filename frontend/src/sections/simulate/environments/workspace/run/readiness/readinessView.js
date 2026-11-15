@@ -122,16 +122,27 @@ export function readinessView(report) {
     },
     open,
     // Each blocked row that holds selected cases back, with how many: the run popup names each one.
-    heldBy: (report?.rows || [])
-      .filter(
-        (row) => row.status === "blocked" && (row.affected?.count ?? 0) > 0,
-      )
-      .map((row) => ({
-        id: row.id,
-        area: row.area ?? null,
-        count: row.affected.count,
-        reason: row.reason ?? null,
-      })),
+    heldBy: [
+      ...(report?.rows || [])
+        .filter(
+          (row) => row.status === "blocked" && (row.affected?.count ?? 0) > 0,
+        )
+        .map((row) => ({
+          id: row.id,
+          area: row.area ?? null,
+          count: row.affected.count,
+          reason: row.reason ?? null,
+        })),
+      // A worker whose limits nothing holds is not a row: the selection counts the cases it holds back.
+      ...Object.entries(selection.held_by_workers || {})
+        .filter(([, count]) => count > 0)
+        .map(([id, count]) => ({
+          id: `worker:${id}`,
+          area: "workers",
+          count,
+          reason: null,
+        })),
+    ],
     // The declared workers' readiness, so a `worker:<id>` hold reads by name.
     workers: report?.workers || [],
     // The server sends fix_groups only once it supports fixes.
