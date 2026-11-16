@@ -1,3 +1,4 @@
+import { FIX_ROUTE_READY } from "src/api/simulate-environments/readinessFix";
 import { READY_TO_RUN_COPY, RUN_PLAN_COPY } from "./readiness.constants";
 import { RUN_PLAN_PROMPTS_COPY } from "../runPlanPrompts.constants";
 
@@ -122,7 +123,8 @@ export function readinessView(report) {
     // The first area holding cases back, chosen by the server; null when no area does.
     blockingArea: selection.blocking_area,
     // The server sends fix_groups only once it supports fixes.
-    grouped: Boolean(report?.fix_groups),
+    // Fix all needs the group fix route, which is not built yet.
+    grouped: FIX_ROUTE_READY && Boolean(report?.fix_groups),
     fixMessage: report?.fix_groups?.builder?.message ?? null,
     groups,
     limits: lines

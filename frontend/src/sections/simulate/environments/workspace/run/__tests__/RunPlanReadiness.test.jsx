@@ -62,6 +62,7 @@ vi.mock("src/api/simulate-environments/readiness", () => ({
   useReadinessCases: () => ({}),
 }));
 vi.mock("src/api/simulate-environments/readinessFix", () => ({
+  FIX_ROUTE_READY: true,
   useFixRun: () => ({ data: state.fixRun }),
   FIX_ACTIVE_STATES: new Set([
     "queued",
@@ -195,7 +196,7 @@ describe("RunDialog with Ready to run", () => {
           area: "workers",
           count: 1,
           reason: "x",
-          label: "Refund worker's limits are not held",
+          text: "Refund worker's limits are not held",
         },
       ],
     };

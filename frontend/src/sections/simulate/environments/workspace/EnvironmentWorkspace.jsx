@@ -28,7 +28,6 @@ import {
   useFixRun,
 } from "src/api/simulate-environments/readinessFix";
 import { useReadiness } from "src/api/simulate-environments/readiness";
-import * as fixDummy from "src/api/simulate-environments/readinessFix.dummy"; // dummy:
 import { CreditExhaustionBanner } from "src/components/CreditExhaustionBanner";
 import { LoadingScreen } from "src/components/loading-screen";
 import { useCreditExhaustion } from "src/hooks/use-credit-exhaustion";
@@ -143,15 +142,12 @@ export default function EnvironmentWorkspace() {
   const [runDialog, setRunDialog] = useState(null);
   // A fix started from the Run plan talks in the builder chat: lines it hasn't
   // picked up yet show there as queued, and the chat opens when one starts.
-  let fixOn = Boolean(runDialog);
-  fixOn = fixOn || fixDummy.dummyOn(); // dummy:
+  const fixOn = Boolean(runDialog);
   const fixData = useFixRun(env?.id, { enabled: fixOn }).data;
   // A disabled query keeps its last data; a closed plan shows none of it.
   const fixRun = fixOn ? fixData ?? null : null;
-  let chatTurns = chat.turns || [];
-  chatTurns = fixDummy.useDummyChat(fixRun, chatTurns); // dummy:
-  chatTurns = [
-    ...chatTurns,
+  let chatTurns = [
+    ...(chat.turns || []),
     ...(fixRun?.queue || []).map((item, i) => ({
       id: `fix-queued-${i}`,
       role: "user",

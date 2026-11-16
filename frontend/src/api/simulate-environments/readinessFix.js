@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "src/utils/axios";
-import { apiPath } from "src/api/contracts/api-surface";
+import { apiPath, isContractedApiPath } from "src/api/contracts/api-surface";
 import { harnessIdempotencyKey } from "src/api/harness/harness";
 import {
   draftsKey,
@@ -9,7 +9,6 @@ import {
   refreshFollowers,
   versionPickFields,
 } from "./versions";
-import * as fixDummy from "./readinessFix.dummy"; // dummy:
 
 /**
  * The builder chat's fix run for an environment: Fix all starts it, the
@@ -17,6 +16,11 @@ import * as fixDummy from "./readinessFix.dummy"; // dummy:
  */
 
 const POLL_MS = 5000;
+
+// The group fix route is not built yet. Until the contract has it, no fix run is read and no Fix all is offered.
+export const FIX_ROUTE_READY = isContractedApiPath(
+  "/simulate/api/harness-environments/{id}/capabilities/fix/",
+);
 
 // shortcut: the fix route isn't in the API contract yet; switch to apiPath once the backend ships it and the contract is regenerated.
 const fixPath = (envId) =>
@@ -39,12 +43,10 @@ const retryServerFailures = (failureCount, error) => {
 };
 
 export const getFixRun = async (envId) => {
-  if (fixDummy.dummyOn()) return fixDummy.dummyFixRun(envId); // dummy:
   return (await axios.get(fixPath(envId))).data?.fix ?? null;
 };
 
 export const startGroupFix = async (envId, vars) => {
-  if (fixDummy.dummyOn()) return fixDummy.dummyStartFix(envId, vars); // dummy:
   const { group, rows, picks, idempotencyKey } = vars;
   return (
     await axios.post(fixPath(envId), {
@@ -62,7 +64,7 @@ export function useFixRun(envId, { enabled = true } = {}) {
   return useQuery({
     queryKey: fixRunKey(envId),
     queryFn: () => getFixRun(envId),
-    enabled: Boolean(envId) && enabled,
+    enabled: FIX_ROUTE_READY && Boolean(envId) && enabled,
     retry: retryServerFailures,
     refetchInterval: (query) =>
       FIX_ACTIVE_STATES.has(query.state.data?.state) ? POLL_MS : false,
@@ -79,7 +81,6 @@ export function useStartGroupFix(envId) {
       startGroupFix(envId, {
         ...vars,
         idempotencyKey: harnessIdempotencyKey(),
-        ...(fixDummy.dummyOn() && fixDummy.dummyContext(queryClient, envId)), // dummy:
       }),
     onSuccess: (data) => {
       queryClient.setQueryData(fixRunKey(envId), data.fix);

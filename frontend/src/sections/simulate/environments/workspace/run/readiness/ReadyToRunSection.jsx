@@ -48,7 +48,6 @@ import { fToNow } from "src/utils/format-time";
 import { readinessView } from "./readinessView";
 import WorkerBoundaries from "./WorkerBoundaries";
 import { READY_TO_RUN_COPY as COPY } from "./readiness.constants";
-import * as fixDummy from "src/api/simulate-environments/readinessFix.dummy"; // dummy:
 
 const lineSx = {
   borderTop: "1px solid",
@@ -587,7 +586,6 @@ export default function ReadyToRunSection({
   // The agent version new credential values were saved as.
   const [savedId, setSavedId] = useState(null);
   const agentVersions = [...(versions.data?.agent || [])];
-  fixDummy.addMissingKeys(agentVersions); // dummy:
   const agentId = readiness.data?.pairing?.agent_version?.id;
   const agentVersion = agentVersions.find((one) => one.id === agentId);
   // New values are saved over the default version only, so the form is offered

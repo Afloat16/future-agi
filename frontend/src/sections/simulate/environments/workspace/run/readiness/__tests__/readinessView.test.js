@@ -1,5 +1,14 @@
-import { describe, it, expect } from "vitest";
-import { fixEndCard, readinessView } from "../readinessView";
+import { describe, it, expect, vi } from "vitest";
+
+// Fix all shows only once the group fix route is in the API contract.
+const route = vi.hoisted(() => ({ ready: true }));
+vi.mock("src/api/simulate-environments/readinessFix", () => ({
+  get FIX_ROUTE_READY() {
+    return route.ready;
+  },
+}));
+
+const { fixEndCard, readinessView } = await import("../readinessView");
 
 const row = (id, status, extra = {}) => ({
   id,
@@ -187,6 +196,14 @@ describe("readinessView", () => {
       builder: ["tool_binding"],
       recheck: ["reset"],
     });
+
+    route.ready = false;
+    const noRoute = readinessView({
+      ...report({ areas }),
+      fix_groups: { builder: { message: "Fix it", rows: ["tool_routing"] } },
+    });
+    route.ready = true;
+    expect(noRoute.grouped).toBe(false);
 
     const flat = readinessView(report({ areas, rows }));
     expect(flat.grouped).toBe(false);
