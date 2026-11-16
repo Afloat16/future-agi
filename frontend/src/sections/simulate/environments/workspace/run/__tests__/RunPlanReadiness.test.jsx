@@ -183,9 +183,14 @@ describe("RunDialog with Ready to run", () => {
   it("names the worker whose limits hold a case back", () => {
     state.view = {
       ...view({ requested: 3, blocked: 1 }),
-      heldBy: [{ id: "worker:refund", area: "workers", count: 1, reason: "x" }],
-      workers: [
-        { worker_id: "refund", name: "Refund worker", status: "blocked" },
+      heldBy: [
+        {
+          id: "worker:refund",
+          name: "Refund worker",
+          area: "workers",
+          count: 1,
+          reason: "x",
+        },
       ],
     };
     renderDialog();

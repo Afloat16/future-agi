@@ -32,10 +32,11 @@ import { DRAFTS_COPY, RUN_DIALOG_COPY as COPY } from "../workspace.constants";
 import { inlineRunError, planRefusal } from "./runErrors";
 import ReadyToRunSection from "./readiness/ReadyToRunSection";
 import CountTip from "./readiness/CountTip";
-import { readinessView, workerHeldBackReason } from "./readiness/readinessView";
+import { readinessView } from "./readiness/readinessView";
 import { RUN_PLAN_PROMPTS_COPY as PROMPTS } from "./runPlanPrompts.constants";
 import {
   READY_TO_RUN_COPY,
+  WORKER_COPY,
   RUN_PLAN_COPY,
 } from "./readiness/readiness.constants";
 
@@ -343,10 +344,9 @@ export default function RunDialog({
     id: row.id,
     text: RUN_PLAN_COPY.heldBackBy(
       row.count,
-      workerHeldBackReason(row.id, readiness.workers) ||
-        READY_TO_RUN_COPY.areas[row.area] ||
-        row.reason ||
-        row.id,
+      row.area === "workers"
+        ? WORKER_COPY.heldBack(row.name)
+        : READY_TO_RUN_COPY.areas[row.area] || row.reason || row.name,
     ),
   }));
 

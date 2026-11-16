@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { fireEvent, render, screen } from "src/utils/test-utils";
 import WorkerBoundaries from "../WorkerBoundaries";
-import { workerHeldBackReason } from "../readinessView";
 
 const tool = (name, action, boundary) => ({ tool: name, action, boundary });
 
@@ -72,12 +71,5 @@ describe("WorkerBoundaries", () => {
   it("is hidden when the contract declares no worker", () => {
     const { container } = render(<WorkerBoundaries workers={[]} />);
     expect(container.textContent).toBe("");
-  });
-
-  it("names a case held back by a worker's limits", () => {
-    expect(workerHeldBackReason("worker:refund", WORKERS)).toBe(
-      "Refund worker's limits are not held",
-    );
-    expect(workerHeldBackReason("tool_routing", WORKERS)).toBeNull();
   });
 });

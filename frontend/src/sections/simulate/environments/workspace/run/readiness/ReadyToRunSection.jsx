@@ -689,11 +689,8 @@ export default function ReadyToRunSection({
       },
     );
   };
-  // A blocked worker holds back the cases that rely on it and has a fix, so it counts with the blocked lines.
-  const blockers =
-    view.open.filter((line) => line.status === "blocked").length +
-    (readiness.data?.workers || []).filter((one) => one.status === "blocked")
-      .length;
+  // Blocked rows plus blocked workers, counted by the server.
+  const blockers = readiness.data?.blockers ?? 0;
   const readyLabels = view.ready.map((area) => COPY.areas[area] || area);
   // Grading is ready only once some scenario is known to be gradable.
   if (view.grading.gradable > 0 && !view.grading.notGradable) {

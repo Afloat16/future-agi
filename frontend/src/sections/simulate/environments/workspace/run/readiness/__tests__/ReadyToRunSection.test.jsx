@@ -98,6 +98,7 @@ const blockedReport = (recheckScope) => ({
   },
   validation: { state: "not_run", error: null },
   answer: { kind: "blocked" },
+  blockers: 1,
   areas: [{ id: "tool_binding", status: "blocked", rows: ["tool_routing"] }],
   rows: [
     {
@@ -365,34 +366,10 @@ describe("ReadyToRunSection", () => {
     );
   });
 
-  it("counts a blocked worker in the header, so it never reads No blocker beside it", () => {
-    report = {
-      ...blockedReport("pair"),
-      answer: { kind: "ready" },
-      areas: [],
-      rows: [],
-      workers: [
-        {
-          worker_id: "refund",
-          name: "Refund worker",
-          status: "blocked",
-          reason: "x",
-          tools: [],
-          bypassed: [],
-        },
-        {
-          worker_id: "lookup",
-          name: "Lookup",
-          status: "partial",
-          reason: "y",
-          tools: [],
-          bypassed: [],
-        },
-      ],
-    };
+  it("shows the server's blocker count, which includes a blocked worker", () => {
+    report = { ...blockedReport("pair"), rows: [], areas: [], blockers: 2 };
     render(<ReadyToRunSection envId="env-1" picks={picks} />);
-    expect(screen.getByText("· 1 blocker to fix")).toBeVisible();
-    expect(screen.queryByText("· No blocker")).toBeNull();
+    expect(screen.getByText(/· 2 blockers? to fix/)).toBeVisible();
   });
 
   it("opens a fix with the server's instruction and re-checks the pair", async () => {

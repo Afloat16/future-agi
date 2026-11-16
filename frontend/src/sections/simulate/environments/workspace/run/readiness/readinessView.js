@@ -1,8 +1,4 @@
-import {
-  READY_TO_RUN_COPY,
-  RUN_PLAN_COPY,
-  WORKER_COPY,
-} from "./readiness.constants";
+import { READY_TO_RUN_COPY, RUN_PLAN_COPY } from "./readiness.constants";
 import { RUN_PLAN_PROMPTS_COPY } from "../runPlanPrompts.constants";
 
 // Worst first: an area reads as its worst counted row.
@@ -121,28 +117,8 @@ export function readinessView(report) {
       untested: selection.untested ?? 0,
     },
     open,
-    // Each blocked row that holds selected cases back, with how many: the run popup names each one.
-    heldBy: [
-      ...(report?.rows || [])
-        .filter(
-          (row) => row.status === "blocked" && (row.affected?.count ?? 0) > 0,
-        )
-        .map((row) => ({
-          id: row.id,
-          area: row.area ?? null,
-          count: row.affected.count,
-          reason: row.reason ?? null,
-        })),
-      // A worker whose limits nothing holds is not a row: the selection counts the cases it holds back.
-      ...Object.entries(selection.held_by_workers || {})
-        .filter(([, count]) => count > 0)
-        .map(([id, count]) => ({
-          id: `worker:${id}`,
-          area: "workers",
-          count,
-          reason: null,
-        })),
-    ],
+    // Each blocked row, then each blocked worker, holding selected cases back, named by the server.
+    heldBy: selection.held_by || [],
     // The declared workers' readiness, so a `worker:<id>` hold reads by name.
     workers: report?.workers || [],
     // The server sends fix_groups only once it supports fixes.
@@ -193,15 +169,4 @@ export function fixEndCard(fix, report) {
           .filter(Boolean)
           .join(". ");
   return { text, action: copy.openPlan };
-}
-
-/**
- * A held-back reason the run plan gives as `worker:<id>`, in words: the worker's
- * limits are not held. Null for any other reason.
- */
-export function workerHeldBackReason(reason, workers) {
-  if (typeof reason !== "string" || !reason.startsWith("worker:")) return null;
-  const id = reason.slice("worker:".length);
-  const worker = (workers || []).find((one) => one.worker_id === id);
-  return WORKER_COPY.heldBack(worker?.name || id);
 }
