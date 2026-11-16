@@ -5,7 +5,7 @@
 export const OPENAPI_CONTRACT = Object.freeze({
   generatedFrom: "api_contracts/openapi/swagger.json",
   swaggerVersion: "2.0",
-  endpointCount: 1153,
+  endpointCount: 1154,
   endpoints: {
     "/accounts/2fa/recovery-codes/": {
       get: {
@@ -28995,6 +28995,41 @@ export const OPENAPI_CONTRACT = Object.freeze({
         },
       },
     },
+    "/simulate/api/harness-environments/{id}/capabilities/fix/": {
+      get: {
+        operationId: "simulate_api_harness-environments_capabilities_fix_read",
+        runtimeRequestValidation: false,
+        runtimeResponseValidation: true,
+        requestBody: null,
+        queryParameters: {},
+        responses: {
+          200: {
+            $ref: "#/definitions/HarnessReadinessFixResponse",
+          },
+          default: {
+            $ref: "#/definitions/ManagementAPIErrorResponse",
+          },
+        },
+      },
+      post: {
+        operationId:
+          "simulate_api_harness-environments_capabilities_fix_create",
+        runtimeRequestValidation: true,
+        runtimeResponseValidation: true,
+        requestBody: {
+          $ref: "#/definitions/HarnessReadinessFixStart",
+        },
+        queryParameters: {},
+        responses: {
+          202: {
+            $ref: "#/definitions/HarnessReadinessFixResponse",
+          },
+          default: {
+            $ref: "#/definitions/ManagementAPIErrorResponse",
+          },
+        },
+      },
+    },
     "/simulate/api/harness-environments/{id}/capabilities/history/": {
       get: {
         operationId: "simulate_api_harness-environments_capability_history",
@@ -55713,22 +55748,6 @@ export const OPENAPI_CONTRACT = Object.freeze({
           type: "string",
           format: "decimal",
         },
-        autoreload_maxcharge: {
-          title: "Autoreload maxcharge",
-          type: "string",
-          format: "decimal",
-          "x-nullable": true,
-        },
-        autoreload_consent: {
-          title: "Autoreload consent",
-          type: "boolean",
-          default: false,
-        },
-        autoreload_charge_now: {
-          title: "Autoreload charge now",
-          type: "boolean",
-          default: false,
-        },
       },
     },
     AutoReloadSettingsResponse: {
@@ -67569,6 +67588,9 @@ export const OPENAPI_CONTRACT = Object.freeze({
         selection: {
           $ref: "#/definitions/HarnessCapabilitySelectionCounts",
         },
+        fix_groups: {
+          $ref: "#/definitions/HarnessCapabilityFixGroups",
+        },
       },
     },
     HarnessCertifiedPairingPage: {
@@ -69278,6 +69300,57 @@ export const OPENAPI_CONTRACT = Object.freeze({
         snapshot: {
           title: "Snapshot",
           type: "object",
+        },
+      },
+    },
+    HarnessReadinessFixResponse: {
+      required: ["fix"],
+      type: "object",
+      properties: {
+        fix: {
+          $ref: "#/definitions/HarnessReadinessFix",
+        },
+      },
+    },
+    HarnessReadinessFixStart: {
+      required: ["group", "idempotency_key"],
+      type: "object",
+      properties: {
+        agent_version_id: {
+          title: "Agent version id",
+          type: "string",
+          format: "uuid",
+        },
+        environment_version_id: {
+          title: "Environment version id",
+          type: "string",
+          format: "uuid",
+        },
+        suite_version_id: {
+          title: "Suite version id",
+          type: "string",
+          format: "uuid",
+        },
+        group: {
+          title: "Group",
+          type: "string",
+          enum: ["needs_you", "builder", "recheck"],
+        },
+        rows: {
+          description: "The rows to fix; absent fixes every row of the group.",
+          type: "array",
+          items: {
+            type: "string",
+            maxLength: 64,
+            minLength: 1,
+          },
+          maxItems: 16,
+        },
+        idempotency_key: {
+          title: "Idempotency key",
+          type: "string",
+          maxLength: 128,
+          minLength: 1,
         },
       },
     },
@@ -104439,6 +104512,23 @@ export const OPENAPI_CONTRACT = Object.freeze({
         },
       },
     },
+    HarnessCapabilityFixGroups: {
+      description:
+        "The rows of each fix group; present only once fixes are switched on.",
+      required: ["builder", "needs_you", "recheck"],
+      type: "object",
+      properties: {
+        builder: {
+          $ref: "#/definitions/HarnessCapabilityFixGroup",
+        },
+        needs_you: {
+          $ref: "#/definitions/HarnessCapabilityFixGroup",
+        },
+        recheck: {
+          $ref: "#/definitions/HarnessCapabilityFixGroup",
+        },
+      },
+    },
     HarnessCapabilityPairing: {
       required: [
         "agent_version",
@@ -104668,12 +104758,26 @@ export const OPENAPI_CONTRACT = Object.freeze({
         fix: {
           $ref: "#/definitions/HarnessCapabilityFix",
         },
+        fix_group: {
+          title: "Fix group",
+          description:
+            "Who fixes the row: the builder chat, the user, or a re-check alone; null without a fix.",
+          type: "string",
+          enum: ["needs_you", "builder", "recheck"],
+          "x-nullable": true,
+        },
         consequence: {
           title: "Consequence",
           description:
             "What the status means for the cases, their spend and their independence.",
           type: "string",
           minLength: 1,
+        },
+        fix_progress: {
+          $ref: "#/definitions/HarnessCapabilityFixProgress",
+        },
+        fix_result: {
+          $ref: "#/definitions/HarnessCapabilityFixResult",
         },
         needed_by: {
           title: "Needed by",
@@ -107343,6 +107447,105 @@ export const OPENAPI_CONTRACT = Object.freeze({
           },
         },
       },
+    },
+    HarnessReadinessFix: {
+      description: "The environment's latest fix run; null for none.",
+      required: [
+        "id",
+        "state",
+        "group",
+        "updated_at",
+        "started_at",
+        "finished_at",
+        "rows",
+        "queue",
+        "lines",
+        "saved",
+        "draft",
+        "error",
+        "pairing",
+      ],
+      type: "object",
+      properties: {
+        id: {
+          title: "Id",
+          type: "string",
+          format: "uuid",
+        },
+        state: {
+          title: "State",
+          type: "string",
+          enum: [
+            "queued",
+            "fixing",
+            "waiting_on_you",
+            "saving",
+            "checking",
+            "done",
+            "failed",
+            "stopped",
+          ],
+        },
+        group: {
+          title: "Group",
+          type: "string",
+          enum: ["needs_you", "builder", "recheck"],
+        },
+        updated_at: {
+          title: "Updated at",
+          description: "When something the run shows last changed.",
+          type: "string",
+          minLength: 1,
+        },
+        started_at: {
+          title: "Started at",
+          type: "string",
+          minLength: 1,
+        },
+        finished_at: {
+          title: "Finished at",
+          type: "string",
+          minLength: 1,
+          "x-nullable": true,
+        },
+        rows: {
+          description: "The rows still being fixed.",
+          type: "array",
+          items: {
+            type: "string",
+            minLength: 1,
+          },
+        },
+        queue: {
+          description: "Messages waiting for the builder chat, in order.",
+          type: "array",
+          items: {
+            $ref: "#/definitions/HarnessReadinessFixQueued",
+          },
+        },
+        lines: {
+          type: "array",
+          items: {
+            $ref: "#/definitions/HarnessReadinessFixLine",
+          },
+        },
+        saved: {
+          $ref: "#/definitions/HarnessReadinessFixSaved",
+        },
+        draft: {
+          title: "Draft",
+          description:
+            "Ended without saving; its changes wait in unsaved edits.",
+          type: "boolean",
+        },
+        error: {
+          $ref: "#/definitions/HarnessReadinessFixError",
+        },
+        pairing: {
+          $ref: "#/definitions/HarnessReadinessFixPairing",
+        },
+      },
+      "x-nullable": true,
     },
     HarnessCall: {
       required: ["started_at", "ended_at", "duration_ms", "turns"],
@@ -126294,6 +126497,19 @@ export const OPENAPI_CONTRACT = Object.freeze({
         },
       },
     },
+    HarnessCapabilityFixGroup: {
+      required: ["rows"],
+      type: "object",
+      properties: {
+        rows: {
+          type: "array",
+          items: {
+            type: "string",
+            minLength: 1,
+          },
+        },
+      },
+    },
     HarnessCapabilityAgentTools: {
       required: ["read", "count"],
       type: "object",
@@ -126510,6 +126726,74 @@ export const OPENAPI_CONTRACT = Object.freeze({
         },
         recheck: {
           $ref: "#/definitions/HarnessCapabilityFixRecheck",
+        },
+        message: {
+          title: "Message",
+          description:
+            "What a builder fix sends to the builder chat; null for the others.",
+          type: "string",
+          minLength: 1,
+          "x-nullable": true,
+        },
+      },
+      "x-nullable": true,
+    },
+    HarnessCapabilityFixProgress: {
+      description: "Where a fix run stands on this row; on live reads only.",
+      required: ["state", "reason", "waiting_on", "fix_id"],
+      type: "object",
+      properties: {
+        state: {
+          title: "State",
+          type: "string",
+          enum: [
+            "queued",
+            "fixing",
+            "waiting_on_you",
+            "waiting_on_other",
+            "fixed",
+            "could_not_fix",
+          ],
+        },
+        reason: {
+          $ref: "#/definitions/HarnessReadinessFixReason",
+        },
+        waiting_on: {
+          title: "Waiting on",
+          description: "The row this one waits on to be fixed first.",
+          type: "string",
+          minLength: 1,
+          "x-nullable": true,
+        },
+        fix_id: {
+          title: "Fix id",
+          type: "string",
+          format: "uuid",
+        },
+      },
+      "x-nullable": true,
+    },
+    HarnessCapabilityFixResult: {
+      description:
+        "What a saved fix did for this row, on the versions it saved from.",
+      required: ["state", "environment", "suite", "fix_id"],
+      type: "object",
+      properties: {
+        state: {
+          title: "State",
+          type: "string",
+          enum: ["fixed", "could_not_fix"],
+        },
+        environment: {
+          $ref: "#/definitions/RunVersionLabel",
+        },
+        suite: {
+          $ref: "#/definitions/RunVersionLabel",
+        },
+        fix_id: {
+          title: "Fix id",
+          type: "string",
+          format: "uuid",
         },
       },
       "x-nullable": true,
@@ -127291,6 +127575,106 @@ export const OPENAPI_CONTRACT = Object.freeze({
           },
         },
       },
+    },
+    HarnessReadinessFixError: {
+      required: ["code", "message"],
+      type: "object",
+      properties: {
+        code: {
+          title: "Code",
+          type: "string",
+          minLength: 1,
+        },
+        message: {
+          title: "Message",
+          type: "string",
+        },
+        code_detail: {
+          title: "Code detail",
+          description:
+            "The refusal's own code when ``code`` is validation_refused.",
+          type: "string",
+          minLength: 1,
+        },
+      },
+      "x-nullable": true,
+    },
+    HarnessReadinessFixLine: {
+      required: ["row_id", "area", "state", "reason", "waiting_on"],
+      type: "object",
+      properties: {
+        row_id: {
+          title: "Row id",
+          type: "string",
+          minLength: 1,
+        },
+        area: {
+          title: "Area",
+          type: "string",
+          minLength: 1,
+          "x-nullable": true,
+        },
+        state: {
+          title: "State",
+          type: "string",
+          enum: [
+            "queued",
+            "fixing",
+            "waiting_on_you",
+            "waiting_on_other",
+            "fixed",
+            "could_not_fix",
+          ],
+        },
+        reason: {
+          $ref: "#/definitions/HarnessReadinessFixReason",
+        },
+        waiting_on: {
+          title: "Waiting on",
+          type: "string",
+          minLength: 1,
+          "x-nullable": true,
+        },
+      },
+    },
+    HarnessReadinessFixPairing: {
+      description: "The environment and suite versions the run started from.",
+      required: ["environment_version", "suite_version"],
+      type: "object",
+      properties: {
+        environment_version: {
+          $ref: "#/definitions/RunVersionLabel",
+        },
+        suite_version: {
+          $ref: "#/definitions/RunVersionLabel",
+        },
+      },
+    },
+    HarnessReadinessFixQueued: {
+      description: "Messages waiting for the builder chat, in order.",
+      required: ["message"],
+      type: "object",
+      properties: {
+        message: {
+          title: "Message",
+          type: "string",
+          minLength: 1,
+        },
+      },
+    },
+    HarnessReadinessFixSaved: {
+      description: "The versions the run saved; only moved pieces.",
+      required: ["environment", "suite"],
+      type: "object",
+      properties: {
+        environment: {
+          $ref: "#/definitions/RunVersionLabel",
+        },
+        suite: {
+          $ref: "#/definitions/RunVersionLabel",
+        },
+      },
+      "x-nullable": true,
     },
     HarnessTargetMetrics: {
       required: ["provider"],
@@ -136113,6 +136497,22 @@ export const OPENAPI_CONTRACT = Object.freeze({
       },
       "x-nullable": true,
     },
+    HarnessReadinessFixReason: {
+      required: ["code", "message"],
+      type: "object",
+      properties: {
+        code: {
+          title: "Code",
+          type: "string",
+          minLength: 1,
+        },
+        message: {
+          title: "Message",
+          type: "string",
+        },
+      },
+      "x-nullable": true,
+    },
     HarnessEnvironmentCallActorTrigger: {
       type: "object",
       properties: {
@@ -136826,12 +137226,26 @@ export const OPENAPI_CONTRACT = Object.freeze({
         fix: {
           $ref: "#/definitions/HarnessCapabilityFix",
         },
+        fix_group: {
+          title: "Fix group",
+          description:
+            "Who fixes the row: the builder chat, the user, or a re-check alone; null without a fix.",
+          type: "string",
+          enum: ["needs_you", "builder", "recheck"],
+          "x-nullable": true,
+        },
         consequence: {
           title: "Consequence",
           description:
             "What the status means for the cases, their spend and their independence.",
           type: "string",
           minLength: 1,
+        },
+        fix_progress: {
+          $ref: "#/definitions/HarnessCapabilityFixProgress",
+        },
+        fix_result: {
+          $ref: "#/definitions/HarnessCapabilityFixResult",
         },
       },
     },

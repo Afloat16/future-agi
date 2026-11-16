@@ -2100,6 +2100,14 @@ def delete_environment(job: HostedHarnessJob) -> None:
         )
 
         close_environment_nudges(locked, code="environment_deleted")
+        from simulate.services.harness_readiness import fix_runs
+
+        fix_runs.close_active(
+            locked,
+            state="stopped",
+            code="environment_deleted",
+            message="The environment was deleted",
+        )
         active_children = list(
             HostedHarnessJob.no_workspace_objects.select_for_update()
             .filter(environment=locked)

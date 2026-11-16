@@ -12,8 +12,8 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Literal, TypedDict, cast
+from datetime import UTC, datetime
+from typing import Any, Literal, NotRequired, TypedDict, cast
 from uuid import UUID
 
 from simulate.models import (
@@ -23,11 +23,13 @@ from simulate.models import (
     HostedHarnessJob,
 )
 from simulate.services.canonical_json import canonical_digest
+from simulate.services.harness_readiness import fix_groups
 from simulate.services.harness_readiness.catalogue import (
     CATALOGUE,
     GATE_OPEN,
     AnswerView,
     AreaView,
+    FixGroupsView,
     Pairing,
     PairingView,
     RowView,
@@ -130,6 +132,9 @@ class Affected(TypedDict):
 class SelectionRowView(RowView):
     needed_by: int
     affected: Affected
+    # Laid on by ``fix_runs.with_progress`` on live reads only.
+    fix_progress: NotRequired[dict[str, Any]]
+    fix_result: NotRequired[dict[str, Any]]
 
 
 class SelectionReport(TypedDict):
@@ -142,6 +147,7 @@ class SelectionReport(TypedDict):
     catalog_version: str
     rules_version: str
     computed_at: str
+    fix_groups: NotRequired[FixGroupsView]
     selection: SelectionView
 
 
@@ -209,7 +215,7 @@ def selection_report(
                 "affected": {"count": len(held), "of": requested, **_capped(held)},
             }
         )
-    return {
+    selected: SelectionReport = {
         **report,
         "answer": _selected_answer(report["answer"], rows, placed),
         "rows": rows,
@@ -230,6 +236,12 @@ def selection_report(
             "requirements_recorded": placement.recorded,
         },
     }
+    # Live reads only: a run's snapshot never keeps it.
+    if fix_groups.enabled():
+        selected["fix_groups"] = fix_groups.fix_groups(report["rows"])
+    from simulate.services.harness_readiness.fix_runs import with_progress
+
+    return cast(SelectionReport, with_progress(pairing, selected))
 
 
 ProofState = Literal["proved", "failed", "not_proved"]
@@ -360,7 +372,7 @@ def _proof_views(pairing: Pairing, ready: bool):
             )
         )
     earlier.sort(
-        key=lambda one: one[0] or datetime.min.replace(tzinfo=timezone.utc),
+        key=lambda one: one[0] or datetime.min.replace(tzinfo=UTC),
         reverse=True,
     )
 

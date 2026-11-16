@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from model_hub.serializers.contracts import JsonObjectRequestField
 from simulate.models import HarnessNudge, HostedHarnessJob
+from simulate.models.readiness_fix import LINE_STATES, ReadinessFixRun
 from simulate.serializers.harness_job import (
     TARGET_SYSTEM_PROMPT_MAX_CHARS,
     HarnessCapabilityScopeSerializer,
@@ -1248,6 +1249,48 @@ class HarnessCapabilityFixSerializer(serializers.Serializer):
             " (checked on its own) can change it."
         ),
     )
+    # Absent from a run's snapshot taken before fixes were grouped.
+    message = serializers.CharField(
+        allow_null=True,
+        required=False,
+        help_text="What a builder fix sends to the builder chat; null for the others.",
+    )
+
+
+# catalogue.FixGroup; importing the readiness package here is circular.
+_FIX_GROUPS = ("needs_you", "builder", "recheck")
+
+
+class HarnessReadinessFixReasonSerializer(serializers.Serializer):
+    code = serializers.CharField()
+    message = serializers.CharField(allow_blank=True)
+
+
+class HarnessReadinessFixErrorSerializer(HarnessReadinessFixReasonSerializer):
+    code_detail = serializers.CharField(
+        required=False,
+        help_text="The refusal's own code when ``code`` is validation_refused.",
+    )
+
+
+class HarnessCapabilityFixProgressSerializer(serializers.Serializer):
+    state = serializers.ChoiceField(choices=LINE_STATES)
+    reason = HarnessReadinessFixReasonSerializer(allow_null=True)
+    waiting_on = serializers.CharField(
+        allow_null=True, help_text="The row this one waits on to be fixed first."
+    )
+    fix_id = serializers.UUIDField()
+
+
+class HarnessCapabilityFixResultSerializer(serializers.Serializer):
+    state = serializers.ChoiceField(choices=("fixed", "could_not_fix"))
+    environment = RunVersionLabelSerializer(
+        allow_null=True, help_text="The environment version the fix saved, if moved."
+    )
+    suite = RunVersionLabelSerializer(
+        allow_null=True, help_text="The suite version the fix saved, if moved."
+    )
+    fix_id = serializers.UUIDField()
 
 
 class HarnessCapabilityRowSerializer(serializers.Serializer):
@@ -1270,8 +1313,28 @@ class HarnessCapabilityRowSerializer(serializers.Serializer):
     evidence = HarnessCapabilityEvidenceSerializer(many=True)
     checked_at = serializers.CharField(allow_null=True)
     fix = HarnessCapabilityFixSerializer(allow_null=True)
+    # Absent from a run's snapshot taken before fixes were grouped.
+    fix_group = serializers.ChoiceField(
+        choices=_FIX_GROUPS,
+        allow_null=True,
+        required=False,
+        help_text=(
+            "Who fixes the row: the builder chat, the user, or a re-check alone; null"
+            " without a fix."
+        ),
+    )
     consequence = serializers.CharField(
         help_text="What the status means for the cases, their spend and their independence."
+    )
+    fix_progress = HarnessCapabilityFixProgressSerializer(
+        required=False,
+        allow_null=True,
+        help_text="Where a fix run stands on this row; on live reads only.",
+    )
+    fix_result = HarnessCapabilityFixResultSerializer(
+        required=False,
+        allow_null=True,
+        help_text="What a saved fix did for this row, on the versions it saved from.",
     )
 
 
@@ -1283,6 +1346,16 @@ class HarnessCapabilityCountsSerializer(serializers.Serializer):
     unavailable = serializers.IntegerField()
     untested = serializers.IntegerField()
     stale = serializers.IntegerField()
+
+
+class HarnessCapabilityFixGroupSerializer(serializers.Serializer):
+    rows = serializers.ListField(child=serializers.CharField())
+
+
+class HarnessCapabilityFixGroupsSerializer(serializers.Serializer):
+    builder = HarnessCapabilityFixGroupSerializer()
+    needs_you = HarnessCapabilityFixGroupSerializer()
+    recheck = HarnessCapabilityFixGroupSerializer()
 
 
 class HarnessCapabilityReportSerializer(serializers.Serializer):
@@ -1297,6 +1370,78 @@ class HarnessCapabilityReportSerializer(serializers.Serializer):
     catalog_version = serializers.CharField()
     rules_version = serializers.CharField()
     computed_at = serializers.CharField()
+
+
+class HarnessReadinessFixStartSerializer(HarnessCapabilityQuerySerializer):
+    """Fix a group's rows on the current versions; an absent id is the default."""
+
+    group = serializers.ChoiceField(choices=_FIX_GROUPS)
+    rows = serializers.ListField(
+        child=serializers.CharField(max_length=64),
+        required=False,
+        allow_empty=False,
+        max_length=16,
+        help_text="The rows to fix; absent fixes every row of the group.",
+    )
+    idempotency_key = serializers.CharField(max_length=128)
+
+
+class HarnessReadinessFixLineSerializer(serializers.Serializer):
+    row_id = serializers.CharField()
+    area = serializers.CharField(allow_null=True)
+    state = serializers.ChoiceField(choices=LINE_STATES)
+    reason = HarnessReadinessFixReasonSerializer(allow_null=True)
+    waiting_on = serializers.CharField(allow_null=True)
+
+
+class HarnessReadinessFixQueuedSerializer(serializers.Serializer):
+    message = serializers.CharField()
+
+
+class HarnessReadinessFixSavedSerializer(serializers.Serializer):
+    environment = RunVersionLabelSerializer(allow_null=True)
+    suite = RunVersionLabelSerializer(allow_null=True)
+
+
+class HarnessReadinessFixPairingSerializer(serializers.Serializer):
+    environment_version = RunVersionLabelSerializer(allow_null=True)
+    suite_version = RunVersionLabelSerializer(allow_null=True)
+
+
+class HarnessReadinessFixSerializer(serializers.Serializer):
+    """A run readiness fix: the builder chat fixing rows, then a save and re-check."""
+
+    id = serializers.UUIDField()
+    state = serializers.ChoiceField(choices=ReadinessFixRun.State.values)
+    group = serializers.ChoiceField(choices=_FIX_GROUPS)
+    updated_at = serializers.CharField(
+        help_text="When something the run shows last changed."
+    )
+    started_at = serializers.CharField()
+    finished_at = serializers.CharField(allow_null=True)
+    rows = serializers.ListField(
+        child=serializers.CharField(), help_text="The rows still being fixed."
+    )
+    queue = HarnessReadinessFixQueuedSerializer(
+        many=True, help_text="Messages waiting for the builder chat, in order."
+    )
+    lines = HarnessReadinessFixLineSerializer(many=True)
+    saved = HarnessReadinessFixSavedSerializer(
+        allow_null=True, help_text="The versions the run saved; only moved pieces."
+    )
+    draft = serializers.BooleanField(
+        help_text="Ended without saving; its changes wait in unsaved edits."
+    )
+    error = HarnessReadinessFixErrorSerializer(allow_null=True)
+    pairing = HarnessReadinessFixPairingSerializer(
+        help_text="The environment and suite versions the run started from."
+    )
+
+
+class HarnessReadinessFixResponseSerializer(serializers.Serializer):
+    fix = HarnessReadinessFixSerializer(
+        allow_null=True, help_text="The environment's latest fix run; null for none."
+    )
 
 
 _BUCKETS = ("eligible", "blocked", "stale", "untested")
@@ -1454,6 +1599,10 @@ class HarnessCapabilitySelectionReportSerializer(HarnessCapabilityReportSerializ
 
     rows = HarnessCapabilitySelectionRowSerializer(many=True)
     selection = HarnessCapabilitySelectionCountsSerializer()
+    fix_groups = HarnessCapabilityFixGroupsSerializer(
+        required=False,
+        help_text="The rows of each fix group; present only once fixes are switched on.",
+    )
 
 
 class HarnessCapabilityCaseSerializer(serializers.Serializer):

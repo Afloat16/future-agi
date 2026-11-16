@@ -455,6 +455,7 @@ class TestRows:
             "action": "Point issue_refund at the test world",
             "would": "issue_refund lands in the test world and its probe passes",
             "recheck": None,
+            "message": None,
         }
 
     def test_a_check_not_run_on_build_evidence_is_rechecked_on_the_pairing(
@@ -1081,6 +1082,7 @@ class TestApi:
                     "evidence",
                     "checked_at",
                     "fix",
+                    "fix_group",
                     "consequence",
                     "needed_by",
                     "affected",
@@ -1273,6 +1275,7 @@ class TestDoneWhen:
             "would": "issue_refund lands in the test world and its probe passes",
             # Certified already: the fix is a new version, checked on its own.
             "recheck": None,
+            "message": None,
         }
         assert {
             one: rows[one]["status"]
@@ -1780,7 +1783,7 @@ class TestConsequence:
             "Audio checks do not apply to a chat connection"
         )
         assert rows["browser"]["consequence"].startswith("No check measures this yet")
-        assert report["rules_version"] == "8"
+        assert report["rules_version"] == "9"
         HarnessCapabilityReportSerializer(data=report).is_valid(raise_exception=True)
 
     @pytest.mark.parametrize(
@@ -2116,6 +2119,9 @@ class TestAgentGap:
                 " this agent version in an environment that has it",
                 "would": "send_email is simulated in the test world and its probe passes",
                 "recheck": None,
+                "message": "The agent calls send_email, which this environment does not"
+                " have: add send_email to the test world so the agent's calls land"
+                " there and its probe passes.",
             }
             assert discovery["consequence"].startswith(
                 "In a run, send_email would reach outside the test world"
@@ -2231,6 +2237,7 @@ class TestAgentGap:
                 "method": "POST",
                 "path": f"{BASE}/{environment.id}/capabilities/recheck/",
             },
+            "message": None,
         }
         assert report["pairing"]["agent_tools"] == {"read": False, "count": 0}
         assert report["answer"]["kind"] == "unchecked"
@@ -2282,6 +2289,32 @@ class TestAgentGap:
         assert validation["state"] == "validating"
         job = HostedHarnessJob.no_workspace_objects.get(id=validation["job_id"])
         assert job.payload["metadata"]["agent_reading"] == "only"
+
+    def test_a_certified_pair_reads_checking_while_its_tools_are_read(
+        self, user, workspace, storage, auth_client
+    ):
+        environment, a2 = _with_a2(
+            user, workspace, storage, "rd-gap-unread-checking", tools=None
+        )
+        _built(environment, contract=WORLD)
+        _certify(environment, storage, agent=a2)
+        before = _get(auth_client, environment.id, agent_version_id=str(a2.id)).json()
+
+        started = _recheck(auth_client, environment.id, agent_version_id=str(a2.id))
+        during = _get(auth_client, environment.id, agent_version_id=str(a2.id)).json()
+        HostedHarnessJob.no_workspace_objects.filter(
+            id=started.json()["validation"]["job_id"]
+        ).update(state=HostedHarnessJob.State.COMPLETED)
+        after = _get(auth_client, environment.id, agent_version_id=str(a2.id)).json()
+
+        assert before["validation"]["state"] == "ready"
+        # The run gate refuses the pair while the reading runs; the report says so.
+        assert during["validation"]["state"] == "validating"
+        assert during["validation"]["job_id"] == started.json()["validation"]["job_id"]
+        assert during["answer"]["kind"] == "validating"
+        # The cached report is not served once the check ends.
+        assert after["validation"]["state"] == "ready"
+        assert after["answer"]["kind"] != "validating"
 
     def test_the_same_tools_leave_the_certificate_reading(
         self, user, workspace, storage

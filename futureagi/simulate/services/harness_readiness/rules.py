@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
 from simulate.models import HarnessAgentVersionRuntime, HarnessAssembledBundle
+from simulate.services.harness_readiness import fix_groups
 from simulate.services.harness_readiness.catalogue import (
     CATALOGUE,
     GATE_OPEN,
@@ -83,6 +84,7 @@ def _row(
         "evidence": list(reading.evidence) if reading is not None else [],
         "checked_at": checked_at if reading is not None else None,
         "fix": None,
+        "fix_group": None,
         "consequence": "",
     }
 
@@ -257,6 +259,7 @@ def rows(
         row["fix"] = _fix(pairing, row, certified=evidence.source == "pair_certificate")
         row["consequence"] = consequence(row, connection(pairing.runtime))
         rows.append(row)
+    fix_groups.annotate(rows, gap=gap, structural=structural)
     return rows
 
 

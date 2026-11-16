@@ -43,6 +43,7 @@ from simulate.services.harness_versioning.drafts import (
     remember_save,
     replayed_save,
     require_chat_idle,
+    require_no_fix_waiting,
     require_no_rebuild,
     retire_chat_runtime,
     saved_body,
@@ -146,6 +147,7 @@ def promote_candidates(
             return replayed
         require_not_busy(locked, "environment")
         require_no_rebuild(locked, piece="environment")
+        require_no_fix_waiting(locked)
         require_chat_idle(locked)
         entry = live_set(locked)
         if entry is None or any(

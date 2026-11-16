@@ -186,6 +186,13 @@ def require_no_rebuild(
         raise rebuild_running(piece)
 
 
+def require_no_fix_waiting(environment: HostedHarnessJob) -> None:
+    """Refuse a manual Save while a run readiness fix waits on the person's answer."""
+    from simulate.services.harness_readiness import fix_runs
+
+    fix_runs.require_no_fix_waiting(environment)
+
+
 def rebuild_running(piece: str | None) -> HostedHarnessError:
     return version_error(
         "rebuild_running",
@@ -1247,6 +1254,7 @@ def save_drafts(
         first = next(piece for piece in DRAFT_PIECES if piece in pieces)
         require_not_busy(locked, first)
         require_no_rebuild(locked, piece=first)
+        require_no_fix_waiting(locked)
         require_chat_idle(locked)
         expected_review_digest = next(
             (

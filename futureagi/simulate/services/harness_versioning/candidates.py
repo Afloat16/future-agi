@@ -41,6 +41,7 @@ from simulate.services.harness_versioning.draft_pieces import (
 )
 from simulate.services.harness_versioning.drafts import (
     require_chat_idle,
+    require_no_fix_waiting,
     require_no_rebuild,
 )
 from simulate.services.harness_versioning.versions import (
@@ -221,6 +222,7 @@ def validate_drafts(
         first = next(iter(opened))
         require_not_busy(locked, first)
         require_no_rebuild(locked, piece=first)
+        require_no_fix_waiting(locked)
         require_chat_idle(locked)
         _require_fresh(locked, opened)
         review.heal_suite_index(locked)
