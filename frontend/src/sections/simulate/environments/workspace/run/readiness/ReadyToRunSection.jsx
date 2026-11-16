@@ -690,7 +690,7 @@ export default function ReadyToRunSection({
     );
   };
   // Blocked rows plus blocked workers, counted by the server.
-  const blockers = readiness.data?.blockers ?? 0;
+  const blockers = readiness.data.blockers;
   const readyLabels = view.ready.map((area) => COPY.areas[area] || area);
   // Grading is ready only once some scenario is known to be gradable.
   if (view.grading.gradable > 0 && !view.grading.notGradable) {
@@ -963,7 +963,7 @@ export default function ReadyToRunSection({
           </Typography>
         </Stack>
       ))}
-      <WorkerBoundaries workers={readiness.data?.workers} dimmed={checking} />
+      <WorkerBoundaries workers={readiness.data.workers} dimmed={checking} />
       {view.grading.notGradable > 0 && (
         <Stack direction="row" spacing={1} alignItems="center" sx={dimSx}>
           <StatusBadge

@@ -105,6 +105,7 @@ const view = ({ requested = 10, blocked = 0, canRun = true } = {}) => ({
   limits: [],
   ready: [],
   grading: { notGradable: 0 },
+  heldBy: [],
 });
 
 const dialog = () => (
@@ -180,7 +181,7 @@ describe("RunDialog with Ready to run", () => {
     expect(screen.getByText("2 selected scenarios")).toBeInTheDocument();
   });
 
-  it("names the worker whose limits hold a case back", () => {
+  it("shows the server's label for what holds a case back", () => {
     state.view = {
       ...view({ requested: 3, blocked: 1 }),
       heldBy: [
@@ -190,6 +191,7 @@ describe("RunDialog with Ready to run", () => {
           area: "workers",
           count: 1,
           reason: "x",
+          label: "Refund worker's limits are not held",
         },
       ],
     };

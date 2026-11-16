@@ -99,6 +99,7 @@ const blockedReport = (recheckScope) => ({
   validation: { state: "not_run", error: null },
   answer: { kind: "blocked" },
   blockers: 1,
+  workers: [],
   areas: [{ id: "tool_binding", status: "blocked", rows: ["tool_routing"] }],
   rows: [
     {
@@ -301,6 +302,8 @@ describe("ReadyToRunSection", () => {
       answer: { kind: "unchecked" },
       areas: [],
       rows: [],
+      workers: [],
+      blockers: 0,
       selection: {
         requested: 3,
         eligible: 0,

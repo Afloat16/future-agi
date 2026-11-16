@@ -36,7 +36,6 @@ import { readinessView } from "./readiness/readinessView";
 import { RUN_PLAN_PROMPTS_COPY as PROMPTS } from "./runPlanPrompts.constants";
 import {
   READY_TO_RUN_COPY,
-  WORKER_COPY,
   RUN_PLAN_COPY,
 } from "./readiness/readiness.constants";
 
@@ -339,16 +338,13 @@ export default function RunDialog({
     (line) => line.status === "blocked",
   )?.area;
   const blockingLabel = READY_TO_RUN_COPY.areas[blockingArea];
-  // Why each held-back case waits: a worker by name, else the row's area, else its own reason.
-  const heldReasons = (readiness?.heldBy || []).map((row) => ({
-    id: row.id,
-    text: RUN_PLAN_COPY.heldBackBy(
-      row.count,
-      row.area === "workers"
-        ? WORKER_COPY.heldBack(row.name)
-        : READY_TO_RUN_COPY.areas[row.area] || row.reason || row.name,
-    ),
-  }));
+  // Why each held-back case waits, in the server's words.
+  const heldReasons = heldBack
+    ? readiness.heldBy.map((row) => ({
+        id: row.id,
+        text: RUN_PLAN_COPY.heldBackBy(row.count, row.label),
+      }))
+    : [];
 
   const canSubmit =
     !submitting &&

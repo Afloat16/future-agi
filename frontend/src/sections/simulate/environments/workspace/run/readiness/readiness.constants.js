@@ -161,14 +161,6 @@ export const RUN_PLAN_COPY = {
 // the app's one process), so nothing here ever says "Enforced".
 export const WORKER_COPY = {
   heading: "Participants and tools",
-  heldCooperative: "Held at the world (cooperative)",
-  // A worker's status word when it is not held on its own channel.
-  status: {
-    blocked: "Blocked",
-    unavailable: "Unavailable",
-    untested: "Untested",
-    partial: "Partial",
-  },
   allowed: "Allowed",
   blocked: "Blocked",
   notEnforced: "Not enforced",
@@ -178,6 +170,4 @@ export const WORKER_COPY = {
     `Reached the world without its own channel in ${n} recent call${n === 1 ? "" : "s"}`,
   showTools: (name) => `Show ${name}'s tools`,
   hideTools: (name) => `Hide ${name}'s tools`,
-  // The run dialog's reason for a case held back by `worker:<id>`.
-  heldBack: (name) => `${name}'s limits are not held`,
 };

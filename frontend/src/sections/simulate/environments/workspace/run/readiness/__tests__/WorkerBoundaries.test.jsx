@@ -10,6 +10,7 @@ const WORKERS = [
     name: "Order-lookup worker",
     binding: "separate",
     status: "partial",
+    status_label: "Held at the world (cooperative)",
     reason_code: "held_at_world_cooperative",
     reason: "Held at the world on its own channel.",
     tools: [
@@ -17,6 +18,7 @@ const WORKERS = [
       tool("update_order_status", "POST orders.update_status", "blocked"),
     ],
     bypassed: [],
+    bypassed_count: 0,
     fix: null,
     checked_at: null,
   },
@@ -25,30 +27,32 @@ const WORKERS = [
     name: "Refund worker",
     binding: "shared",
     status: "unavailable",
+    status_label: "Unavailable",
     reason_code: "shared_binding",
     reason:
       "Its calls reach the world without its name, so no limit is held for it.",
     tools: [tool("issue_refund", null, "not_enforced")],
-    bypassed: [{ run_id: "r1", call_execution_id: "c1", tool: null }],
+    // Seven bypassing calls, the newest five listed.
+    bypassed: [{ run_id: "r1", call_execution_id: "c1" }],
+    bypassed_count: 7,
     fix: null,
     checked_at: null,
   },
 ];
 
 describe("WorkerBoundaries", () => {
-  it("shows one row per worker, cooperative for a held worker, and the three boundary words", () => {
+  it("shows one row per worker with the server's status word, every bypassing call, and the boundary words", () => {
     const { container } = render(<WorkerBoundaries workers={WORKERS} />);
     expect(screen.getByText("Participants and tools")).toBeInTheDocument();
     expect(screen.getAllByTestId("worker-boundary")).toHaveLength(2);
     expect(
       screen.getByText("Held at the world (cooperative)"),
     ).toBeInTheDocument();
-    // A worker not held on its own channel reads its status word, never just its name again.
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
     expect(screen.getAllByText("Refund worker")).toHaveLength(1);
     expect(
       screen.getByText(
-        "Reached the world without its own channel in 1 recent call",
+        "Reached the world without its own channel in 7 recent calls",
       ),
     ).toBeInTheDocument();
     fireEvent.click(

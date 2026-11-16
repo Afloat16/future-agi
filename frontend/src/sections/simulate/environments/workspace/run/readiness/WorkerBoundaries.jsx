@@ -18,12 +18,6 @@ const BOUNDARY = {
   not_enforced: COPY.notEnforced,
 };
 
-// The status chip's label: a worker held on its own channel reads cooperative, never enforced.
-const statusLabel = (worker) =>
-  worker.reason_code === "held_at_world_cooperative"
-    ? COPY.heldCooperative
-    : COPY.status[worker.status] || worker.status;
-
 function WorkerRow({ worker, dimmed }) {
   const [open, setOpen] = useState(false);
   return (
@@ -41,7 +35,7 @@ function WorkerRow({ worker, dimmed }) {
         </Typography>
         <StatusBadge
           status={worker.status}
-          label={statusLabel(worker)}
+          label={worker.status_label}
           variant="dot"
         />
         <Box sx={{ flex: 1 }} />
@@ -63,9 +57,9 @@ function WorkerRow({ worker, dimmed }) {
       <Typography sx={{ typography: "s3", color: "text.secondary" }}>
         {worker.reason}
       </Typography>
-      {worker.bypassed?.length > 0 && (
+      {worker.bypassed_count > 0 && (
         <Typography sx={{ typography: "s3", color: "warning.dark" }}>
-          {COPY.bypassed(worker.bypassed.length)}
+          {COPY.bypassed(worker.bypassed_count)}
         </Typography>
       )}
       {worker.fix && (
@@ -114,7 +108,7 @@ function WorkerRow({ worker, dimmed }) {
                   {tool.action || COPY.noRoute}
                 </Box>
                 <Box component="td" sx={{ typography: "s3", py: 0.25 }}>
-                  {BOUNDARY[tool.boundary] || COPY.notEnforced}
+                  {BOUNDARY[tool.boundary]}
                 </Box>
               </Box>
             ))}
@@ -130,7 +124,7 @@ WorkerRow.propTypes = {
     worker_id: PropTypes.string.isRequired,
     name: PropTypes.string.isRequired,
     status: PropTypes.string.isRequired,
-    reason_code: PropTypes.string,
+    status_label: PropTypes.string.isRequired,
     reason: PropTypes.string,
     tools: PropTypes.arrayOf(
       PropTypes.shape({
@@ -139,7 +133,7 @@ WorkerRow.propTypes = {
         boundary: PropTypes.string,
       }),
     ).isRequired,
-    bypassed: PropTypes.array,
+    bypassed_count: PropTypes.number.isRequired,
     fix: PropTypes.shape({ action: PropTypes.string }),
   }).isRequired,
   dimmed: PropTypes.bool,

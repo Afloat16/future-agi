@@ -117,10 +117,8 @@ export function readinessView(report) {
       untested: selection.untested ?? 0,
     },
     open,
-    // Each blocked row, then each blocked worker, holding selected cases back, named by the server.
-    heldBy: selection.held_by || [],
-    // The declared workers' readiness, so a `worker:<id>` hold reads by name.
-    workers: report?.workers || [],
+    // Each blocked row, then each worker, holding selected cases back, with the label the server gives it.
+    heldBy: selection.held_by,
     // The server sends fix_groups only once it supports fixes.
     grouped: Boolean(report?.fix_groups),
     fixMessage: report?.fix_groups?.builder?.message ?? null,
