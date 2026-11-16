@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import get_args
+
 from rest_framework import serializers
 
 from model_hub.serializers.contracts import JsonObjectRequestField
@@ -29,6 +31,11 @@ from simulate.serializers.requests.run_test_evals import (
     EvalConfigUpdateRequestSerializer,
 )
 from simulate.serializers.response.run_test import RunVersionLabelSerializer
+from simulate.services.harness_readiness.selection import (
+    BUCKETS,
+    ProofFailure,
+    ProofState,
+)
 from tfc.utils.api_serializers import StrictInputSerializer
 
 
@@ -952,6 +959,70 @@ class HarnessScenarioCoverageSerializer(serializers.Serializer):
     overlay_intensity = serializers.CharField(required=False, allow_null=True)
 
 
+class HarnessScenarioLastProvedSerializer(serializers.Serializer):
+    environment_version = serializers.IntegerField(allow_null=True)
+    suite_version = serializers.IntegerField(allow_null=True)
+
+
+class HarnessScenarioProofSerializer(serializers.Serializer):
+    """Where a scenario's proof stands on the pairing's environment and scenarios versions."""
+
+    state = serializers.ChoiceField(choices=get_args(ProofState))
+    last_proved = HarnessScenarioLastProvedSerializer(
+        allow_null=True,
+        help_text="The latest versions it was proved on, when not proved on these.",
+    )
+    reason = serializers.ChoiceField(
+        choices=get_args(ProofFailure),
+        allow_null=True,
+        help_text="Why its proof failed, set only when state is failed: it held on an earlier environment or "
+        "scenarios version, or it never held.",
+    )
+
+
+class HarnessScenarioReadinessSerializer(serializers.Serializer):
+    """One scenario's readiness for the pairing the list was asked for."""
+
+    bucket = serializers.ChoiceField(
+        choices=BUCKETS, allow_null=True, help_text="Null for a dropped scenario."
+    )
+    by = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="The readiness rows and workers that put it in its bucket.",
+    )
+    reasons = serializers.DictField(
+        child=serializers.CharField(allow_null=True),
+        help_text="Each readiness row in by and its reason code, keyed by the row.",
+    )
+    dropped = serializers.CharField(
+        allow_null=True, help_text="Why certifying the pair dropped it, as a code."
+    )
+    proof = HarnessScenarioProofSerializer()
+    runs = serializers.BooleanField(
+        help_text="Whether a run sends it: not blocked and not dropped."
+    )
+
+
+class HarnessScenarioListQuerySerializer(serializers.Serializer):
+    readiness = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="Add each scenario's readiness for the pairing the version ids name.",
+    )
+    agent_version_id = serializers.UUIDField(
+        required=False,
+        help_text="With readiness; the environment's default when absent.",
+    )
+    environment_version_id = serializers.UUIDField(
+        required=False,
+        help_text="With readiness; the environment's default when absent.",
+    )
+    suite_version_id = serializers.UUIDField(
+        required=False,
+        help_text="With readiness; the environment's default when absent.",
+    )
+
+
 class HarnessScenarioRowSerializer(serializers.Serializer):
     """One authored scenario on the Scenarios list."""
 
@@ -987,6 +1058,11 @@ class HarnessScenarioRowSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
         help_text="Present while the list shows unsaved changes.",
+    )
+    readiness = HarnessScenarioReadinessSerializer(
+        required=False,
+        allow_null=True,
+        help_text="Present when the list is asked for readiness; null when it could not be read.",
     )
 
 

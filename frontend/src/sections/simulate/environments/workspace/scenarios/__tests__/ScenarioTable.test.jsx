@@ -136,9 +136,11 @@ describe("ScenarioTable — proof that failed after the environment changed", ()
       ...rows[0],
       readiness: {
         bucket: "stale",
+        runs: true,
         proof: {
           state: "failed",
           last_proved: { environment_version: 6, suite_version: 5 },
+          reason: "environment_changed",
         },
       },
     };
@@ -149,5 +151,26 @@ describe("ScenarioTable — proof that failed after the environment changed", ()
     expect(
       await screen.findByText(/Last proved on environment v6, scenarios v5/),
     ).toBeInTheDocument();
+  });
+
+  it("names no change when the proof failed on these versions, and says a dropped scenario does not run", async () => {
+    const failed = {
+      ...rows[0],
+      readiness: {
+        bucket: null,
+        dropped: "scenario_dropped",
+        runs: false,
+        proof: { state: "failed", last_proved: null, reason: "did_not_hold" },
+      },
+    };
+    renderTable({ rows: [failed, rows[1]] });
+    fireEvent.mouseOver(
+      screen.getByLabelText("Proof failed on this environment version"),
+    );
+    const detail = await screen.findByText(
+      /Its proof did not hold on this environment version/,
+    );
+    expect(detail).toHaveTextContent("It's held back from runs.");
+    expect(detail).not.toHaveTextContent("environment changed");
   });
 });

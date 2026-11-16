@@ -75,8 +75,12 @@ class TestProofState:
         assert flags[REFUND_KEYS[0]]["proof"] == {
             "state": "proved",
             "last_proved": None,
+            "reason": None,
         }
         assert flags[LOOKUP_KEYS[1]]["proof"]["state"] == "failed"
+        # Failed on these versions and never held anywhere: no change is named as its cause.
+        assert flags[LOOKUP_KEYS[1]]["proof"]["reason"] == "did_not_hold"
+        assert flags[LOOKUP_KEYS[1]]["runs"] is True
         assert flags[LOOKUP_KEYS[2]]["proof"]["state"] == "not_proved"
         assert flags[LOOKUP_KEYS[1]]["bucket"] == "stale"
         assert "not_proved_here" in flags[LOOKUP_KEYS[1]]["by"]
@@ -98,9 +102,9 @@ class TestProofState:
         self, user, workspace, storage
     ):
         environment, a2 = _with_a2(user, workspace, storage, "sr-other-agent")
-        assert harness_readiness.readiness_report(_pairing(environment))[
-            "validation"
-        ]["state"] in ("ready", "certified")
+        assert harness_readiness.readiness_report(_pairing(environment))["validation"][
+            "state"
+        ] in ("ready", "certified")
 
         flags = harness_readiness.scenario_readiness(_pairing(environment, a2))
 
@@ -129,6 +133,7 @@ class TestProofState:
             "environment_version": earlier.version_number,
             "suite_version": environment.suite_version.version_number,
         }
+        assert proof["reason"] == "environment_changed"
 
     def test_a_certified_earlier_pairing_counts_as_the_last_proof(
         self, user, workspace, storage
@@ -157,6 +162,7 @@ class TestProofState:
                 "environment_version": environment.environment_version.version_number,
                 "suite_version": certified_suite.version_number,
             },
+            "reason": None,
         }
 
     def test_a_case_never_proved_anywhere_has_no_last_proof(
@@ -166,7 +172,7 @@ class TestProofState:
 
         proof = _flags(environment)[LOOKUP_KEYS[0]]["proof"]
 
-        assert proof == {"state": "not_proved", "last_proved": None}
+        assert proof == {"state": "not_proved", "last_proved": None, "reason": None}
 
 
 class TestBuckets:
@@ -190,8 +196,8 @@ class TestBuckets:
         environment = _ten_certified(user, workspace, storage, "sr-reason")
         real = harness_readiness.selection.readiness_report
 
-        def stale(pairing):
-            report = real(pairing)
+        def stale(pairing, **kwargs):
+            report = real(pairing, **kwargs)
             for row in report["rows"]:
                 if row["id"] == "tool_routing":
                     row.update(status="stale", reason_code="environment_changed")
@@ -203,6 +209,54 @@ class TestBuckets:
 
         assert one["bucket"] == "stale"
         assert one["reasons"]["tool_routing"] == "environment_changed"
+
+    def test_a_dropped_scenario_does_not_run(
+        self, user, workspace, storage, monkeypatch
+    ):
+        environment = _ten_certified(user, workspace, storage, "sr-dropped")
+        dropped = REFUND_KEYS[0]
+        real = harness_readiness.selection._place_all
+
+        def drop(*args, **kwargs):
+            placement = real(*args, **kwargs)
+            placement.placed[:] = [
+                one for one in placement.placed if one.case.key != dropped
+            ]
+            placement.dropped.append({"key": dropped, "code": "scenario_dropped"})
+            return placement
+
+        monkeypatch.setattr(harness_readiness.selection, "_place_all", drop)
+
+        one = _flags(environment)[dropped]
+
+        assert (one["bucket"], one["dropped"], one["runs"]) == (
+            None,
+            "scenario_dropped",
+            False,
+        )
+
+    def test_one_scenario_that_cannot_be_read_is_null_and_the_others_are_kept(
+        self, user, workspace, storage, monkeypatch
+    ):
+        environment = _ten_certified(user, workspace, storage, "sr-one-bad")
+        real = harness_readiness.selection._proof_views
+
+        def views(pairing, ready):
+            view = real(pairing, ready)
+
+            def one(key):
+                if key == LOOKUP_KEYS[0]:
+                    raise RuntimeError("unreadable proof")
+                return view(key)
+
+            return one
+
+        monkeypatch.setattr(harness_readiness.selection, "_proof_views", views)
+
+        flags = _flags(environment)
+
+        assert flags[LOOKUP_KEYS[0]] is None
+        assert all(flags[key] is not None for key in REFUND_KEYS)
 
 
 class TestScenarioListField:
@@ -249,6 +303,51 @@ class TestScenarioListField:
         ]
         assert rows
         assert all(row.get("readiness") is None for row in rows)
+
+    def test_a_pairing_that_cannot_be_read_lists_its_rows_with_null_readiness(
+        self, user, workspace, storage, auth_client, monkeypatch
+    ):
+        from simulate.services.hosted_harness import HostedHarnessError
+
+        environment = _ten_certified(user, workspace, storage, "sr-api-pair-error")
+
+        def unreadable(*args, **kwargs):
+            raise HostedHarnessError(
+                "readiness_unavailable", "unreadable", status_code=503
+            )
+
+        monkeypatch.setattr(harness_readiness, "scenario_readiness", unreadable)
+
+        asked = auth_client.get(
+            f"{SCENARIOS}/{environment.id}/scenarios/", {"readiness": "1"}
+        )
+
+        assert asked.status_code == 200
+        rows = [
+            row
+            for group in asked.json()["results"]
+            for row in (group.get("rows") or [group])
+            if isinstance(row, dict) and "scenario_key" in row
+        ]
+        assert rows
+        assert all(row["readiness"] is None for row in rows)
+
+    def test_the_contract_declares_the_readiness_parameter_and_row_field(self):
+        from simulate.serializers.harness_environment import (
+            HarnessScenarioListQuerySerializer,
+            HarnessScenarioRowSerializer,
+        )
+
+        assert {
+            "readiness",
+            "agent_version_id",
+            "environment_version_id",
+            "suite_version_id",
+        } <= set(HarnessScenarioListQuerySerializer().fields)
+        readiness = HarnessScenarioRowSerializer().fields["readiness"]
+        assert {"bucket", "by", "reasons", "dropped", "proof", "runs"} == set(
+            readiness.fields
+        )
 
     def test_a_bad_version_id_is_refused(self, user, workspace, storage, auth_client):
         environment = _ten_certified(user, workspace, storage, "sr-api-bad")

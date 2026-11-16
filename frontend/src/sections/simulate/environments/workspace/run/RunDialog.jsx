@@ -357,7 +357,7 @@ export default function RunDialog({
   const heldReasons = heldBack
     ? readiness.heldBy.map((row) => ({
         id: row.id,
-        text: RUN_PLAN_COPY.heldBackBy(row.count, row.label),
+        text: RUN_PLAN_COPY.heldBackBy(row.count, row.text),
       }))
     : [];
 

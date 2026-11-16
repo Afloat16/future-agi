@@ -23,10 +23,7 @@ export function ProofFailedMark({ row }) {
   return (
     <CustomTooltip
       show
-      title={SCENARIOS_COPY.proofFailedDetail(
-        readiness.proof.last_proved,
-        readiness.bucket === "blocked",
-      )}
+      title={SCENARIOS_COPY.proofFailedDetail(readiness.proof, readiness.runs)}
       size="small"
       arrow
     >

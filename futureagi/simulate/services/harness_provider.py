@@ -34,7 +34,10 @@ from simulate.services.hosted_harness_conversation import serialize_conversation
 from tfc.utils.api_errors import build_error_envelope
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from simulate.services.harness_actor_rules import ActorRecord
+    from simulate.services.harness_readiness.selection import ScenarioReadiness
     from simulate.services.scenario_faults import FaultProblem, FaultTarget
 
 logger = logging.getLogger(__name__)
@@ -2187,16 +2190,22 @@ class HostedHarnessProvider:
 
         asked = request.query_params.get("group_by")
         group_by = DEFAULT_GROUP_BY if asked is None else asked
-        flags = None
-        if request.query_params.get("readiness") in ("1", "true"):
+        flags: dict[str, ScenarioReadiness | None] | None = None
+        asked_for = getattr(request, "validated_query_data", None) or {}
+        if asked_for.get("readiness"):
             from simulate.services.hosted_harness import HostedHarnessError
 
             try:
-                flags = _scenario_readiness(job, request.query_params)
+                flags = _scenario_readiness(job, asked_for)
             except HostedHarnessError as exc:
-                # A build that failed or is still running has no versions to pair: its rows carry no flags.
+                # A build that failed or is still running has no versions to pair, and a pairing that cannot be
+                # read leaves its rows without readiness rather than failing the list.
                 if exc.code != "versioning_disabled":
-                    return Response(exc.as_dict(), status=exc.status_code)
+                    logger.warning(
+                        "scenario_list_readiness_unreadable job_id=%s code=%s",
+                        job.id,
+                        exc.code,
+                    )
                 flags = {}
         from simulate.selectors.environment_documents import contract_data
         from simulate.services.harness_actor_rules import actor_rules
@@ -3301,21 +3310,16 @@ class _SandboxMappingError(RuntimeError):
     pass
 
 
-def _scenario_readiness(job, params):
-    """Each scenario's readiness for the pairing the query names (an absent id is the
-    environment's default), by scenario key."""
+def _scenario_readiness(
+    job: HostedHarnessJob, query: Mapping[str, Any]
+) -> dict[str, ScenarioReadiness | None]:
+    """Each scenario's readiness for the pairing the validated query names (an absent
+    id is the environment's default), by scenario key."""
     from simulate.services.harness_readiness import resolve_pairing, scenario_readiness
-    from simulate.services.hosted_harness import HostedHarnessError
 
-    picks = {}
-    for name in ("agent_version_id", "environment_version_id", "suite_version_id"):
-        value = params.get(name)
-        if not value:
-            continue
-        try:
-            picks[name] = uuid.UUID(str(value))
-        except ValueError:
-            raise HostedHarnessError(
-                "invalid_version_id", f"{name} is not a valid id", status_code=400
-            ) from None
+    picks: dict[str, uuid.UUID] = {
+        name: query[name]
+        for name in ("agent_version_id", "environment_version_id", "suite_version_id")
+        if query.get(name)
+    }
     return scenario_readiness(resolve_pairing(job, **picks))

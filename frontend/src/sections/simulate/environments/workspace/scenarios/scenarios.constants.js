@@ -23,12 +23,19 @@ export const scenarioToolbarButtonSx = { whiteSpace: "nowrap", flexShrink: 0 };
 
 export const SCENARIOS_COPY = {
   proofFailed: "Proof failed on this environment version",
-  proofFailedDetail: (lastProved, heldBack) =>
-    [
+  // By the server's `proof.reason` and `runs`; the cause and whether it runs are its, never guessed here.
+  proofFailedReasons: {
+    environment_changed:
       "Its proof no longer holds since the environment changed.",
+    scenarios_changed: "Its proof no longer holds since its scenarios changed.",
+    did_not_hold: "Its proof did not hold on this environment version.",
+  },
+  proofFailedDetail: ({ reason, last_proved: lastProved }, runs) =>
+    [
+      SCENARIOS_COPY.proofFailedReasons[reason],
       lastProved &&
         `Last proved on environment v${lastProved.environment_version}, scenarios v${lastProved.suite_version}.`,
-      heldBack ? "It's held back from runs." : "It still runs.",
+      runs ? "It still runs." : "It's held back from runs.",
       "Edit it in the builder to prove it again.",
     ]
       .filter(Boolean)
