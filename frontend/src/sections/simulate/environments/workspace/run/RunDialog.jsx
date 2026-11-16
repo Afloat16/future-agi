@@ -1,28 +1,43 @@
 import PropTypes from "prop-types";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
+  Box,
   Button,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
+  Drawer,
+  IconButton,
   MenuItem,
+  Skeleton,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
+import { useReadiness } from "src/api/simulate-environments/readiness";
+import {
+  FIX_ACTIVE_STATES,
+  useFixRun,
+} from "src/api/simulate-environments/readinessFix";
+import Iconify from "src/components/iconify";
+import CustomTooltip from "src/components/tooltip";
+import ContentSkeleton from "src/components/content-skeleton";
 import {
   VERSION_PIECES,
   isVersioningDisabled,
   useDrafts,
   useEnvironmentVersions,
   useRunPlan,
+  useSaveDrafts,
   useSuiteMembers,
 } from "src/api/simulate-environments/versions";
 import { DRAFTS_COPY, RUN_DIALOG_COPY as COPY } from "../workspace.constants";
 import { inlineRunError, planRefusal } from "./runErrors";
+import ReadyToRunSection from "./readiness/ReadyToRunSection";
+import CountTip from "./readiness/CountTip";
+import { readinessView } from "./readiness/readinessView";
+import { RUN_PLAN_PROMPTS_COPY as PROMPTS } from "./runPlanPrompts.constants";
+import {
+  READY_TO_RUN_COPY,
+  RUN_PLAN_COPY,
+} from "./readiness/readiness.constants";
 
 // Only versions a run can take are offered: an active environment or scenario
 // version, an agent version the server marks pickable (its check passed), and
@@ -32,14 +47,118 @@ const offered = (piece, version) =>
   version.isDefault ||
   (piece === "agent" ? version.pickable : version.status === "active");
 
+const PANEL_WIDTH = 560;
+// Opening, closing and collapsing all slide the width over this long.
+const SLIDE_MS = 300;
+
+const BOX_SX = { border: "1px solid", borderColor: "divider", borderRadius: 1 };
+
+// A quiet note: a small icon and grey text, no box. Its actions sit on the
+// right.
+function Note({ severity = "info", action = null, children, ...other }) {
+  return (
+    <Stack direction="row" spacing={0.75} alignItems="flex-start" {...other}>
+      <Iconify
+        icon={
+          severity === "warning"
+            ? "solar:danger-triangle-linear"
+            : "solar:info-circle-linear"
+        }
+        width={14}
+        sx={{
+          mt: "1px",
+          flexShrink: 0,
+          color: severity === "warning" ? "warning.main" : "text.disabled",
+        }}
+      />
+      <Box
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          typography: "s3",
+          color: "text.secondary",
+        }}
+      >
+        {children}
+      </Box>
+      {action && (
+        <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0, my: -0.5 }}>
+          {action}
+        </Stack>
+      )}
+    </Stack>
+  );
+}
+
+Note.propTypes = {
+  severity: PropTypes.oneOf(["info", "warning"]),
+  action: PropTypes.node,
+  children: PropTypes.node,
+};
+
+// The one red line, kept for what stops the run.
+const STOP_SX = { typography: "s3", color: "error.main" };
+
 const named = (version) => version?.label || COPY.unlabelled;
 const optionLabel = (version) =>
   version.isDefault ? `${named(version)} (${COPY.default})` : named(version);
+
+// Offers the version a fix run saved, with how many scenarios run on it.
+function SwitchPrompt({
+  envId,
+  piece,
+  picks,
+  saved,
+  keys,
+  trials,
+  onSwitch,
+  onKeep,
+}) {
+  const { data } = useReadiness(
+    envId,
+    { ...picks, [piece]: saved.id },
+    { keys, trials },
+  );
+  const summary = data ? readinessView(data).summary : null;
+  return (
+    <Note
+      data-testid={`run-switch-${piece}`}
+      action={
+        <>
+          <Button size="small" onClick={onSwitch}>
+            {PROMPTS.switch(named(saved))}
+          </Button>
+          <Button size="small" color="inherit" onClick={onKeep}>
+            {PROMPTS.keep}
+          </Button>
+        </>
+      }
+    >
+      {PROMPTS.switchTo(DRAFTS_COPY.pieces[piece], named(saved))}
+      {summary &&
+        ` ${PROMPTS.switchReady(summary.eligible, summary.requested)}`}
+    </Note>
+  );
+}
+
+SwitchPrompt.propTypes = {
+  envId: PropTypes.string.isRequired,
+  piece: PropTypes.string.isRequired,
+  picks: PropTypes.object.isRequired,
+  saved: PropTypes.shape({ id: PropTypes.string }).isRequired,
+  keys: PropTypes.arrayOf(PropTypes.string),
+  trials: PropTypes.number,
+  onSwitch: PropTypes.func.isRequired,
+  onKeep: PropTypes.func.isRequired,
+};
 
 /**
  * Pick the agent, environment and scenario versions a run uses, see what to
  * watch out for, and start it. Only the versions the user changed are sent;
  * the rest run the environment's defaults at submit time.
+ *
+ * A drawer over the right of the page, not a modal, so the builder chat stays
+ * usable beside it. Collapsed, only its edge tab shows.
  */
 export default function RunDialog({
   open,
@@ -48,9 +167,12 @@ export default function RunDialog({
   trials = 1,
   initialPicks,
   onClose,
+  onGoToChat,
   onSubmit,
   submitting = false,
   error = null,
+  collapsed = false,
+  onCollapsedChange,
 }) {
   const versions = useEnvironmentVersions(env?.id, { enabled: open });
   const { data } = versions;
@@ -69,6 +191,28 @@ export default function RunDialog({
   const [agentFellBack, setAgentFellBack] = useState(false);
   // A refusal stays shown until the user changes a pick.
   const [dismissedError, setDismissedError] = useState(null);
+  // What Ready to run read for these picks: counts and whether Run is allowed.
+  const [readiness, setReadiness] = useState(null);
+  // Per piece, the saved version whose switch prompt was kept away.
+  const [dismissed, setDismissed] = useState({});
+  const [entered, setEntered] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const closing = useRef(null);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setEntered(true));
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(closing.current);
+    };
+  }, []);
+  const close = () => {
+    setLeaving(true);
+    closing.current = setTimeout(onClose, SLIDE_MS);
+  };
+  const fixRun =
+    useFixRun(env?.id, { enabled: open && Boolean(readiness?.grouped) }).data ??
+    null;
+  const saveDrafts = useSaveDrafts(env?.id);
 
   const options = useMemo(
     () =>
@@ -185,6 +329,16 @@ export default function RunDialog({
       COPY.refused
     : null;
 
+  // The server holds back blocked scenarios itself; the popup shows the
+  // count and refuses only a run with nothing left to send.
+  const held = readiness?.summary;
+  const heldBack = held?.blocked > 0;
+  const allHeld = heldBack && held.blocked >= held.requested;
+  const blockingArea = readiness?.open.find(
+    (line) => line.status === "blocked",
+  )?.area;
+  const blockingLabel = READY_TO_RUN_COPY.areas[blockingArea];
+
   const canSubmit =
     !submitting &&
     !versions.isLoading &&
@@ -192,13 +346,27 @@ export default function RunDialog({
     !refusedPlan &&
     !blocked &&
     !(!runAll && members.isLoading) &&
-    (!needsMembers || memberKeys?.length > 0);
+    (!needsMembers || memberKeys?.length > 0) &&
+    (!readiness || readiness.canRun) &&
+    !allHeld;
 
   let runLabel = warnings.length ? COPY.runAnyway : COPY.run;
+  if (heldBack && !allHeld) {
+    runLabel = RUN_PLAN_COPY.runOf(
+      held.requested - held.blocked,
+      held.requested,
+    );
+  }
   if (submitting) runLabel = COPY.starting;
+  // Ready to run reads the scenarios this run sends. Run-all asks for the
+  // picked scenario version as a whole, so it never waits on its members.
+  const readinessKeys = runAll ? null : runIds;
 
   const pick = (piece, id) => {
-    setOverrides((current) => ({ ...current, [piece]: id }));
+    // A pick on the default follows it when the default moves.
+    setOverrides(({ [piece]: _, ...rest }) =>
+      id === defaultId(piece) ? rest : { ...rest, [piece]: id },
+    );
     setDismissedError(error);
     setRerun("done");
   };
@@ -210,26 +378,98 @@ export default function RunDialog({
     onSubmit?.(picks, runIds, selected);
   };
 
-  const pickerField = (piece) => (
+  const fixActive = FIX_ACTIVE_STATES.has(fixRun?.state);
+  // The picked version is older than the one the fix saved.
+  const switchTargets = !readiness?.grouped
+    ? []
+    : ["environment", "suite"].flatMap((piece) => {
+        const savedVersion = fixRun?.saved?.[piece];
+        const picked = options[piece].find((one) => one.id === picks[piece]);
+        const saved = options[piece].find((one) => one.id === savedVersion?.id);
+        const older =
+          picked &&
+          saved &&
+          new Date(picked.createdAt) < new Date(saved.createdAt);
+        return older && dismissed[piece] !== saved.id ? [{ piece, saved }] : [];
+      });
+  // A draft the run itself left is the fix; a later edit is someone else's.
+  const draftsFromRun =
+    fixRun?.state === "done" &&
+    fixRun.draft &&
+    drafts?.pieces?.every(
+      (piece) =>
+        new Date(drafts[piece].updatedAt || 0) <= new Date(fixRun.finished_at),
+    );
+  const saveDraftsNow = () =>
+    saveDrafts.mutate(
+      drafts.pieces.map((piece) => ({
+        piece,
+        parentId: drafts[piece].parentId,
+        revision: drafts[piece].revision,
+      })),
+    );
+
+  const pickerField = (piece, after = null) => (
+    <Stack key={piece} direction="row" spacing={1.5} alignItems="flex-start">
+      <Typography
+        component="label"
+        id={`run-pick-${piece}-label`}
+        htmlFor={`run-pick-${piece}`}
+        sx={{
+          typography: "s3",
+          color: "text.secondary",
+          width: 96,
+          flexShrink: 0,
+          pt: 0.75,
+        }}
+      >
+        {RUN_PLAN_COPY.pickers[piece]}
+      </Typography>
+      {versionPicker(piece)}
+      {after && (
+        <Typography
+          noWrap
+          sx={{
+            typography: "s3",
+            color: "text.secondary",
+            pt: 0.75,
+            flexShrink: 0,
+          }}
+        >
+          {after}
+        </Typography>
+      )}
+    </Stack>
+  );
+
+  const versionPicker = (piece) => (
     <TextField
-      key={piece}
+      id={`run-pick-${piece}`}
       select
-      fullWidth
       size="small"
-      label={COPY.pieces[piece]}
       value={selected[piece] || ""}
       onChange={(e) => pick(piece, e.target.value)}
       disabled={!options[piece].length || submitting}
       SelectProps={{
+        labelId: `run-pick-${piece}-label`,
         displayEmpty: true,
         renderValue: (id) => {
           const version = options[piece].find((one) => one.id === id);
           return version ? optionLabel(version) : COPY.none;
         },
       }}
-      InputLabelProps={{ shrink: true }}
       error={pickerError === piece}
       helperText={pickerError === piece ? errorText : undefined}
+      // Sized to its value; a refusal under it takes the row's width.
+      sx={{
+        flex: "0 1 auto",
+        minWidth: 0,
+        "& .MuiInputBase-root": {
+          minWidth: 140,
+          maxWidth: 180,
+          typography: "s2",
+        },
+      }}
     >
       {options[piece].map((version) => (
         <MenuItem key={version.id} value={version.id}>
@@ -239,27 +479,37 @@ export default function RunDialog({
     </TextField>
   );
 
-  const scenarioLine = () => {
+  // How many scenarios the run sends: null for "all current", undefined
+  // while it isn't known.
+  const scenarioCount = () => {
+    if (blocked) return undefined;
+    if (!runAll) return runIds.length;
+    if (!selected.suite) return undefined;
+    if (!needsMembers) return null;
+    return memberKeys?.length;
+  };
+
+  const scenarioLine = (count) => {
+    if (count === undefined) return null;
     const repeats = trials > 1 ? ` ${COPY.trials(trials)}` : "";
-    if (blocked) return null;
-    if (!runAll) return `${COPY.selectedScenarios(runIds.length)}${repeats}`;
-    if (!selected.suite) return null;
-    if (!needsMembers)
+    if (!runAll) return `${COPY.selectedScenarios(count)}${repeats}`;
+    if (count === null)
       return `${COPY.allCurrentScenarios(named(suite))}${repeats}`;
-    if (members.isLoading) return COPY.membersLoading;
-    if (!memberKeys) return null;
-    return `${COPY.allScenarios(memberKeys.length, named(suite))}${repeats}`;
+    return `${COPY.allScenarios(count, named(suite))}${repeats}`;
   };
 
   const body = () => {
     if (versions.isLoading) {
+      // The plan's own boxes, greyed, so nothing jumps when they load.
       return (
-        <Stack direction="row" spacing={1} alignItems="center">
-          <CircularProgress size={16} />
-          <Typography sx={{ typography: "s2", color: "text.secondary" }}>
-            {COPY.loading}
-          </Typography>
-        </Stack>
+        <>
+          <Box>
+            <ContentSkeleton variant="panel" rows={2} label={COPY.loading} />
+          </Box>
+          <Box sx={BOX_SX} aria-hidden>
+            <ContentSkeleton variant="panel" rows={3} role="presentation" />
+          </Box>
+        </>
       );
     }
     if (!data) {
@@ -271,106 +521,379 @@ export default function RunDialog({
         </Typography>
       );
     }
-    const line = scenarioLine();
+    const count = scenarioCount();
+    const line = scenarioLine(count);
     return (
       <>
-        {PICKABLE.map(pickerField)}
-        {rerun === "fellBack" && (
-          <Alert severity="info" data-testid="rerun-fallback">
-            {agentFellBack ? COPY.rerunAgentFallback : COPY.rerunFallback}
-          </Alert>
+        {/* Versions first: Ready to run answers for whatever is picked. */}
+        <Stack spacing={1}>
+          {PICKABLE.map((piece) =>
+            pickerField(
+              piece,
+              piece === "suite" && count !== undefined
+                ? RUN_PLAN_COPY.scenarioCount(count, runAll)
+                : null,
+            ),
+          )}
+        </Stack>
+        {env?.versioning?.enabled && !blocked && (
+          <ReadyToRunSection
+            envId={env.id}
+            picks={picks}
+            keys={readinessKeys}
+            trials={trials}
+            onView={setReadiness}
+            onGoToChat={onGoToChat}
+          />
         )}
-        {line && (
-          <Typography sx={{ typography: "s2", color: "text.secondary" }}>
-            {line}
-          </Typography>
-        )}
-        {drafts?.any && (
-          <Alert severity="info" data-testid="run-drafts-note">
-            {DRAFTS_COPY.notInRun}
-          </Alert>
-        )}
-        {blocked && (
-          <Typography
-            sx={{ typography: "s2", color: "error.main" }}
-            data-testid="run-blocked"
-          >
-            {blocked}
-          </Typography>
-        )}
-        {members.isError && !members.data && (
-          <Typography sx={{ typography: "s2", color: "error.main" }}>
-            {COPY.membersError}
-          </Typography>
-        )}
-        {missing.length > 0 && !blocked && (
-          <Alert severity="warning">
-            {COPY.notInSuite(missing, named(suite))}
-          </Alert>
-        )}
-        {/* Kept rendered while empty so the live region is announced. */}
-        <Stack
-          spacing={2}
-          aria-live="polite"
-          data-testid="run-plan"
-          sx={{ "&:empty": { mt: 0 } }}
-        >
-          {plan.isLoading && (
-            <Stack direction="row" spacing={1} alignItems="center">
-              <CircularProgress size={14} />
-              <Typography sx={{ typography: "s3", color: "text.subtitle" }}>
-                {COPY.checking}
-              </Typography>
+        {/* The run line and its notes read as one group, tighter than the
+            sections above. */}
+        <Stack spacing={1} sx={{ "&:empty": { display: "none" } }}>
+          {switchTargets.map(({ piece, saved }) => (
+            <SwitchPrompt
+              key={piece}
+              envId={env.id}
+              piece={piece}
+              picks={picks}
+              saved={saved}
+              keys={readinessKeys}
+              trials={trials}
+              onSwitch={() => pick(piece, saved.id)}
+              onKeep={() => setDismissed((d) => ({ ...d, [piece]: saved.id }))}
+            />
+          ))}
+          {rerun === "fellBack" && (
+            <Note data-testid="rerun-fallback">
+              {agentFellBack ? COPY.rerunAgentFallback : COPY.rerunFallback}
+            </Note>
+          )}
+          {needsMembers && members.isLoading && !blocked && (
+            <Box
+              role="progressbar"
+              aria-busy="true"
+              aria-label={COPY.membersLoading}
+            >
+              <Skeleton variant="rounded" width="45%" height={14} />
+            </Box>
+          )}
+          {(line || held || (heldBack && !allHeld)) && (
+            <Stack spacing={0.5}>
+              {line && (
+                <Typography
+                  sx={{ typography: "s2", fontWeight: "fontWeightMedium" }}
+                >
+                  {line}
+                </Typography>
+              )}
+              {held && (
+                <Typography
+                  data-testid="run-counts"
+                  sx={{ typography: "s3", color: "text.secondary" }}
+                >
+                  {READY_TO_RUN_COPY.counts(held).map((part, at) => (
+                    <Fragment key={part.bucket}>
+                      {at > 0 && " · "}
+                      {part.count > 0 ? (
+                        <CountTip
+                          envId={env.id}
+                          picks={picks}
+                          keys={readinessKeys}
+                          bucket={part.bucket}
+                          count={part.count}
+                          report={readiness.computedAt}
+                        >
+                          {part.text}
+                        </CountTip>
+                      ) : (
+                        part.text
+                      )}
+                    </Fragment>
+                  ))}
+                </Typography>
+              )}
+              {heldBack && !allHeld && (
+                <Typography sx={{ typography: "s3", color: "text.secondary" }}>
+                  {RUN_PLAN_COPY.heldBack(held, blockingLabel)}
+                </Typography>
+              )}
             </Stack>
           )}
-          {planFailed && (
-            <Typography sx={{ typography: "s3", color: "text.subtitle" }}>
-              {COPY.planError}
+          {drafts?.any && !readiness?.grouped && (
+            <Note data-testid="run-drafts-note">{DRAFTS_COPY.notInRun}</Note>
+          )}
+          {drafts?.any && readiness?.grouped && !fixActive && (
+            <Note
+              data-testid="run-drafts-note"
+              action={
+                <Button
+                  size="small"
+                  onClick={saveDraftsNow}
+                  disabled={saveDrafts.isPending || drafts.stale}
+                >
+                  {saveDrafts.isPending
+                    ? DRAFTS_COPY.saving
+                    : DRAFTS_COPY.saveToRun}
+                </Button>
+              }
+            >
+              {drafts.stale
+                ? PROMPTS.draftStale
+                : draftsFromRun
+                  ? PROMPTS.draftFix
+                  : DRAFTS_COPY.notInRun}
+              {saveDrafts.error && (
+                <Box
+                  component="span"
+                  role="alert"
+                  sx={{ display: "block", color: "error.main" }}
+                >
+                  {DRAFTS_COPY.errors[saveDrafts.error.error] ??
+                    DRAFTS_COPY.saveError}
+                </Box>
+              )}
+            </Note>
+          )}
+          {blocked && (
+            <Typography sx={STOP_SX} data-testid="run-blocked">
+              {blocked}
             </Typography>
           )}
-          {warnings.map((warning) => (
-            <Alert
-              key={`${warning.code}:${warning.piece || ""}`}
-              severity="warning"
-              data-testid="run-warning"
-            >
-              {warning.message}
-            </Alert>
-          ))}
+          {members.isError && !members.data && (
+            <Typography sx={STOP_SX}>{COPY.membersError}</Typography>
+          )}
+          {missing.length > 0 && !blocked && (
+            <Note severity="warning">
+              {COPY.notInSuite(missing, named(suite))}
+            </Note>
+          )}
+          {/* Kept rendered while empty so the live region is announced. */}
+          <Stack
+            spacing={1}
+            aria-live="polite"
+            data-testid="run-plan"
+            sx={{ "&:empty": { mt: 0 } }}
+          >
+            {plan.isLoading && (
+              <Box
+                role="progressbar"
+                aria-busy="true"
+                aria-label={COPY.checking}
+              >
+                <Skeleton variant="rounded" height={32} />
+              </Box>
+            )}
+            {planFailed && (
+              <Typography sx={{ typography: "s3", color: "text.subtitle" }}>
+                {COPY.planError}
+              </Typography>
+            )}
+            {warnings.map((warning) => (
+              <Note
+                key={`${warning.code}:${warning.piece || ""}`}
+                severity="warning"
+                data-testid="run-warning"
+              >
+                {warning.message}
+              </Note>
+            ))}
+          </Stack>
+          {/* Last, the one line that says why nothing can run. */}
+          {allHeld && (
+            <Typography role="alert" sx={STOP_SX} data-testid="run-all-held">
+              {RUN_PLAN_COPY.allHeld(blockingLabel)}
+            </Typography>
+          )}
         </Stack>
       </>
     );
   };
 
+  const subtitle = RUN_PLAN_COPY.subtitle(
+    env?.name,
+    options.environment.find((one) => one.id === selected.environment)?.label,
+  );
+  const toggleLabel = collapsed ? RUN_PLAN_COPY.expand : RUN_PLAN_COPY.collapse;
+  // Starts at zero width and slides open like expanding; closing slides shut
+  // like collapsing, then unmounts.
+  const narrow = collapsed || !entered || leaving;
+
+  // Persistent and without a backdrop: it sits over the page's right edge and
+  // everything outside it stays clickable.
   return (
-    <Dialog
+    <Drawer
       open={open}
-      onClose={submitting ? undefined : onClose}
-      fullWidth
-      maxWidth="xs"
+      anchor="right"
+      variant="persistent"
+      hideBackdrop
+      ModalProps={{ style: { pointerEvents: "none" } }}
+      sx={{ "& .MuiDrawer-paper": { pointerEvents: "auto" } }}
+      PaperProps={{
+        component: "aside",
+        "aria-label": RUN_PLAN_COPY.title,
+        sx: {
+          height: "100vh",
+          position: "fixed",
+          zIndex: 110,
+          boxShadow: "none",
+          borderRadius: 0,
+          borderLeft: "1px solid",
+          borderColor: "divider",
+          bgcolor: "background.paper",
+          display: "flex",
+          overflow: "visible",
+          minWidth: narrow ? 0 : PANEL_WIDTH,
+          maxWidth: narrow ? 0 : PANEL_WIDTH,
+          transition: `min-width ${SLIDE_MS}ms ease-in-out, max-width ${SLIDE_MS}ms ease-in-out`,
+        },
+      }}
     >
-      <DialogTitle sx={{ typography: "m2", fontWeight: "fontWeightSemiBold" }}>
-        {COPY.title}
-      </DialogTitle>
-      <DialogContent>
-        <Stack spacing={2} sx={{ pt: 1 }}>
+      {/* The tab on the drawer's left edge; the only part left when collapsed. */}
+      <CustomTooltip
+        show
+        size="small"
+        arrow
+        placement="left"
+        title={toggleLabel}
+      >
+        <IconButton
+          size="small"
+          aria-label={toggleLabel}
+          aria-expanded={!collapsed}
+          onClick={() => onCollapsedChange?.(!collapsed)}
+          // right: 100% puts its right edge on the paper's padding edge, so it
+          // covers the paper's 1px left border and the two read as one.
+          sx={{
+            position: "absolute",
+            top: "48px",
+            right: "100%",
+            zIndex: 1,
+            width: 28,
+            height: 28,
+            p: 0,
+            bgcolor: "background.paper",
+            border: "1px solid",
+            borderColor: "divider",
+            borderRight: 0,
+            borderRadius: "4px 0 0 4px",
+            "&:hover": { bgcolor: "background.default" },
+          }}
+        >
+          <Iconify
+            icon="solar:alt-arrow-right-linear"
+            width={16}
+            sx={{
+              color: "text.disabled",
+              transform: collapsed ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 200ms ease-in-out",
+            }}
+          />
+          {fixActive && collapsed && (
+            <Box
+              data-testid="run-plan-busy"
+              sx={{
+                position: "absolute",
+                top: 2,
+                right: 2,
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                bgcolor: "status.info.solid",
+                border: "1.5px solid",
+                borderColor: "background.paper",
+              }}
+            />
+          )}
+        </IconButton>
+      </CustomTooltip>
+      {/* Hidden, not unmounted, while collapsed: picks, queries and a fix's
+          polling carry on, and nothing hidden takes focus. Its width stays
+          fixed while the drawer slides, so it is revealed, not reflowed (the
+          part past the screen edge is off-screen). */}
+      <Stack
+        sx={{
+          // The paper's width less its 1px left border.
+          width: PANEL_WIDTH - 1,
+          flexShrink: 0,
+          height: "100%",
+          overflow: "hidden",
+          visibility: collapsed || leaving ? "hidden" : "visible",
+        }}
+      >
+        <Stack
+          direction="row"
+          spacing={0.5}
+          alignItems="flex-start"
+          sx={{ px: 2, pt: 1.5, pb: 1 }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography
+              component="h2"
+              sx={{ typography: "m2", fontWeight: "fontWeightSemiBold" }}
+            >
+              {RUN_PLAN_COPY.title}
+            </Typography>
+            {subtitle && (
+              <Typography sx={{ typography: "s3", color: "text.secondary" }}>
+                {subtitle}
+              </Typography>
+            )}
+          </Box>
+          <CustomTooltip
+            show={!submitting}
+            size="small"
+            arrow
+            title={RUN_PLAN_COPY.close}
+          >
+            <IconButton
+              aria-label={RUN_PLAN_COPY.close}
+              onClick={close}
+              disabled={submitting}
+              size="small"
+              sx={{
+                color: "text.subtitle",
+                "&:hover": { color: "text.primary" },
+              }}
+            >
+              <Iconify icon="solar:close-linear" width={16} />
+            </IconButton>
+          </CustomTooltip>
+        </Stack>
+        <Stack
+          spacing={2}
+          sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 2, py: 1 }}
+        >
           {body()}
           {dialogError && (
-            <Alert severity="error" data-testid="run-error">
+            <Typography role="alert" sx={STOP_SX} data-testid="run-error">
               {errorText}
-            </Alert>
+            </Typography>
           )}
         </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button color="inherit" onClick={onClose} disabled={submitting}>
-          {COPY.cancel}
-        </Button>
-        <Button variant="contained" onClick={submit} disabled={!canSubmit}>
-          {runLabel}
-        </Button>
-      </DialogActions>
-    </Dialog>
+        <Stack
+          direction="row"
+          spacing={1}
+          justifyContent="flex-end"
+          sx={{
+            px: 2,
+            py: 1.5,
+            borderTop: "1px solid",
+            borderColor: "divider",
+          }}
+        >
+          <Button color="inherit" onClick={close} disabled={submitting}>
+            {COPY.cancel}
+          </Button>
+          <Button
+            variant="contained"
+            onClick={submit}
+            disabled={!canSubmit}
+            startIcon={<Iconify icon="solar:play-bold" width={16} />}
+          >
+            {runLabel}
+          </Button>
+        </Stack>
+      </Stack>
+    </Drawer>
   );
 }
 
@@ -378,6 +901,7 @@ RunDialog.propTypes = {
   open: PropTypes.bool,
   env: PropTypes.shape({
     id: PropTypes.string,
+    name: PropTypes.string,
     versioning: PropTypes.shape({ enabled: PropTypes.bool }),
   }),
   // Undefined runs every scenario.
@@ -386,8 +910,13 @@ RunDialog.propTypes = {
   // {agent, environment, suite} → version id, pre-selected (a re-run's versions).
   initialPicks: PropTypes.objectOf(PropTypes.string),
   onClose: PropTypes.func,
+  // Only where the page has no builder chat: takes the user to it.
+  onGoToChat: PropTypes.func,
   // (picks, scenarioIds, resolved {agent, environment, suite} version ids).
   onSubmit: PropTypes.func,
   submitting: PropTypes.bool,
   error: PropTypes.object,
+  // Only the edge tab shows; the body stays mounted.
+  collapsed: PropTypes.bool,
+  onCollapsedChange: PropTypes.func,
 };

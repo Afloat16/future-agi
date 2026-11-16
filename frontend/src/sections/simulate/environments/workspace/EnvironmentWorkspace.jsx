@@ -28,6 +28,12 @@ import {
 } from "src/api/simulate-environments/runs";
 import { listAllScenarioKeys } from "src/api/simulate-environments/scenarioSelection";
 import { environmentVersionsKey } from "src/api/simulate-environments/versions";
+import {
+  FIX_ACTIVE_STATES,
+  useFixRun,
+} from "src/api/simulate-environments/readinessFix";
+import { useReadiness } from "src/api/simulate-environments/readiness";
+import * as fixDummy from "src/api/simulate-environments/readinessFix.dummy"; // dummy:
 import { CreditExhaustionBanner } from "src/components/CreditExhaustionBanner";
 import { LoadingScreen } from "src/components/loading-screen";
 import { useCreditExhaustion } from "src/hooks/use-credit-exhaustion";
@@ -48,6 +54,7 @@ import DraftBar from "./drafts/DraftBar";
 import TemplateLockBanner from "./TemplateLockBanner";
 import WorkspacePanels from "./WorkspacePanels";
 import RunDialog from "./run/RunDialog";
+import { fixEndCard } from "./run/readiness/readinessView";
 import { inlineRunError } from "./run/runErrors";
 import useWorkspaceTab from "./helpers/useWorkspaceTab";
 import { gapsByTab, counts } from "./helpers/workspaceGaps";
@@ -130,8 +137,51 @@ export default function EnvironmentWorkspace() {
   const selection = useScenarioSelection();
   const queryClient = useQueryClient();
   const pendingSubmission = useRef(null);
-  // The run awaiting its version picks: { ids, trials, initialPicks }.
+  // The run awaiting its version picks: { ids, trials, initialPicks, collapsed }.
   const [runDialog, setRunDialog] = useState(null);
+  // A fix started from the Run plan talks in the builder chat: lines it hasn't
+  // picked up yet show there as queued, and the chat opens when one starts.
+  let fixOn = Boolean(runDialog);
+  fixOn = fixOn || fixDummy.dummyOn(); // dummy:
+  const fixData = useFixRun(env?.id, { enabled: fixOn }).data;
+  // A disabled query keeps its last data; a closed plan shows none of it.
+  const fixRun = fixOn ? (fixData ?? null) : null;
+  let chatTurns = chat.turns || [];
+  chatTurns = fixDummy.useDummyChat(fixRun, chatTurns); // dummy:
+  chatTurns = [
+    ...chatTurns,
+    ...(fixRun?.queue || []).map((item, i) => ({
+      id: `fix-queued-${i}`,
+      role: "user",
+      text: item.message,
+      queued: true,
+    })),
+  ];
+  const activeFixId = FIX_ACTIVE_STATES.has(fixRun?.state) ? fixRun.id : null;
+  // The latest fix seen ending here, and the chat turn it ended after, kept
+  // after the plan closes so the chat can say how it went. A fix already over
+  // when the page loads says nothing.
+  const [endedFix, setEndedFix] = useState(null);
+  const lastFix = useRef(null);
+  const lastTurnId = chatTurns.at(-1)?.id ?? null;
+  useEffect(() => {
+    if (!fixRun) return;
+    const was = lastFix.current;
+    lastFix.current = fixRun;
+    if (endedFix && endedFix.id !== fixRun.id) setEndedFix(null);
+    if (
+      was?.id === fixRun.id &&
+      FIX_ACTIVE_STATES.has(was.state) &&
+      !FIX_ACTIVE_STATES.has(fixRun.state)
+    ) {
+      setEndedFix({ ...fixRun, afterTurn: lastTurnId });
+    }
+  }, [fixRun, endedFix, lastTurnId]);
+  // The card opens the run plan, so only where runs go through it. A saved
+  // fix became the defaults, so the no-picks report says what is still open.
+  const planned = source === "harness" && Boolean(env?.versioning?.enabled);
+  const endedSaved = planned && endedFix?.state === "done" && !endedFix.draft;
+  const endReport = useReadiness(env?.id, {}, { enabled: endedSaved }).data;
   const runMutation = useMutation({
     meta: { errorHandled: true },
     // `resolved` is every version the dialog resolved, defaults included; only
@@ -204,14 +254,47 @@ export default function EnvironmentWorkspace() {
     }
     runMutation.mutate({ ids, trials });
   };
+  // Opens the run plan, or expands it when collapsed; never starts a run.
+  const openRunPlan = () =>
+    runDialog
+      ? setRunDialog((open) => open && { ...open, collapsed: false })
+      : startRun(undefined, 1);
+  const endCard = planned && endedFix && fixEndCard(endedFix, endReport);
+  if (endCard) {
+    // Where the fix ended in the chat, so later turns follow the card.
+    const at = chatTurns.findIndex((turn) => turn.id === endedFix.afterTurn);
+    const cut = at === -1 ? chatTurns.length : at + 1;
+    chatTurns = [
+      ...chatTurns.slice(0, cut),
+      {
+        id: `fix-end-${endedFix.id}`,
+        role: "builder",
+        card: { ...endCard, onAction: openRunPlan },
+      },
+      ...chatTurns.slice(cut),
+    ];
+  }
+  const executionMatch = useMatch(EXECUTION_PATTERN);
+  // Keyed by the re-run's versions, which it reads only when it mounts.
   const runDialogEl = runDialog && (
     <RunDialog
+      key={JSON.stringify(runDialog.initialPicks ?? null)}
       open
       env={env}
       scenarioIds={runDialog.ids}
       trials={runDialog.trials || 1}
       initialPicks={runDialog.initialPicks}
       onClose={() => setRunDialog(null)}
+      // The run page has no builder chat; the workspace page does.
+      onGoToChat={
+        executionMatch
+          ? () => navigate(paths.dashboard.simulate.environments.detail(env.id))
+          : undefined
+      }
+      collapsed={Boolean(runDialog.collapsed)}
+      onCollapsedChange={(collapsed) =>
+        setRunDialog((open) => open && { ...open, collapsed })
+      }
       onSubmit={(picks, ids, resolved) =>
         runMutation.mutate({ ids, trials: runDialog.trials, picks, resolved })
       }
@@ -267,7 +350,6 @@ export default function EnvironmentWorkspace() {
       </Alert>
     ) : null;
 
-  const executionMatch = useMatch(EXECUTION_PATTERN);
   const improvementMatch = useMatch(IMPROVEMENT_PATTERN);
 
   if (notFound) {
@@ -545,9 +627,10 @@ export default function EnvironmentWorkspace() {
           busy={
             chat.running || chat.inFlight || chat.waiting || chat.nudgePending
           }
+          openKey={activeFixId}
           chat={({ collapse, open, collapseRef }) => (
             <BuilderConsole
-              turns={chat.turns}
+              turns={chatTurns}
               running={chat.running}
               onSend={chat.send}
               onStop={chat.stop}
