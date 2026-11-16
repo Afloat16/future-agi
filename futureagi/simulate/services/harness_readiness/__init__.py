@@ -24,6 +24,7 @@ from simulate.services.harness_readiness.findings import (
 )
 from simulate.services.harness_readiness.report import (
     ReadinessReport,
+    evidence_revision,
     readiness_report,
     recheck,
     resolve_pairing,
@@ -54,6 +55,7 @@ __all__ = [
     "SelectionReport",
     "StructuralFinding",
     "case_page",
+    "evidence_revision",
     "pair_bundle",
     "preflight_findings",
     "readiness_report",

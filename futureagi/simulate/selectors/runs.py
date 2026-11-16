@@ -33,5 +33,10 @@ def user_runs(path: str = "") -> Q:
     above.
     """
     return Q(
-        **{f"{path}fix_run__isnull": True, f"{path}verify_of__isnull": True}
+        **{
+            f"{path}fix_run__isnull": True,
+            f"{path}verify_of__isnull": True,
+            # An evidence import's drafting job holds a chat turn only, never a run.
+            f"{path}evidence_drafting__isnull": True,
+        }
     ) & ~Q(**{f"{path}payload__contains": {"metadata": {"certify_only": True}}})

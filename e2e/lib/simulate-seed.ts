@@ -218,6 +218,10 @@ export interface HarnessEnvironmentSeed {
   scenarioKeys: string[];
   refundKeys: string[];
   lookupKeys: string[];
+  /** With `trial`: the finished run and its one trial. */
+  runTestId?: string;
+  testExecutionId?: string;
+  callExecutionId?: string;
 }
 
 /**
@@ -239,6 +243,17 @@ export function seedHarnessEnvironment(opts: {
   certified?: boolean;
   productionOnly?: 'lookup_order' | 'issue_refund';
   failedCheck?: 'lookup_order' | 'issue_refund';
+  /** The refunds include a world actor with no channel (Dana Brooks). */
+  actors?: boolean;
+  /** One finished trial; the string variants pick its World changes (see harness_environment_seed.py). */
+  trial?: boolean | 'fault' | 'actor' | 'duplicate' | 'refused';
+  /** The contract's tools with their fields: inputs, units and what each returns. */
+  toolDetail?: boolean;
+  // Two separately wired workers and what ALK sealed for them: a tool proxy holding their limits, no door in front of
+  // the tool service, or, as an old seal, nothing.
+  workers?: 'sealed' | 'not_fronted' | 'old_seal';
+  // Each refund case gives the refund worker a budget, so the case relies on that worker.
+  refundWorkerBudget?: boolean;
 }): HarnessEnvironmentSeed {
   const suffix = seedSuffix();
   return runSeedScript(
@@ -255,6 +270,11 @@ export function seedHarnessEnvironment(opts: {
         certified: opts.certified ?? true,
         production_only: opts.productionOnly ?? null,
         failed_check: opts.failedCheck ?? null,
+        actors: opts.actors ?? false,
+        trial: opts.trial ?? false,
+        tool_detail: opts.toolDetail ?? false,
+        workers: opts.workers ?? null,
+        refund_worker_budget: opts.refundWorkerBudget ?? false,
       }),
     },
   ) as HarnessEnvironmentSeed;

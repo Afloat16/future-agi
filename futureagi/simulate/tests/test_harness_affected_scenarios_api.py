@@ -1,7 +1,11 @@
 import pytest
 
 from accounts.models import Organization
-from simulate.models import HarnessEnvironmentVersion, HostedHarnessJob
+from simulate.models import (
+    HarnessEnvironmentVersion,
+    HarnessSuiteMember,
+    HostedHarnessJob,
+)
 from simulate.serializers.harness_environment import (
     HarnessCapabilityCasePageSerializer,
     HarnessCapabilitySelectionReportSerializer,
@@ -24,16 +28,13 @@ from simulate.tests.test_harness_readiness import (
     _rows,
 )
 from simulate.tests.test_harness_readiness import (  # noqa: F401 - fixture
-    readiness_on as readiness_on,
-)
-from simulate.tests.test_harness_readiness import (  # noqa: F401 - fixture
     scheduled as scheduled,
 )
 from simulate.tests.test_harness_readiness import (  # noqa: F401 - fixture
     storage as storage,
 )
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("readiness_on")]
 
 
 def _get(auth_client, environment_id, path="capabilities", **params):
@@ -323,3 +324,105 @@ class TestRunHoldBackApi:
         body = response.json()
         assert body["error"] == "all_cases_blocked"
         assert body["selection"]["held_back"]["by"] == {"tool_routing": 4}
+
+    def test_a_case_certifying_dropped_is_held_back_and_the_rest_run(
+        self, user, workspace, storage, auth_client, monkeypatch
+    ):
+        """Run all names every key of the suite, so one dropped case must not refuse
+        the whole run."""
+        monkeypatch.setattr(
+            "simulate.temporal.client.start_hosted_harness_gateway_workflow",
+            lambda *args, **kwargs: None,
+        )
+        monkeypatch.setattr(
+            "simulate.services.harness_usage.require_harness_call_usage",
+            lambda *args, **kwargs: None,
+        )
+        environment = _ten_certified(
+            user,
+            workspace,
+            storage,
+            "hb-api-dropped",
+            warnings=[{"code": "scenario_dropped", "keys": [LOOKUP_KEYS[0]]}],
+        )
+        _built(environment)
+
+        response = auth_client.post(
+            f"{BASE}/{environment.id}/run/",
+            {"scenario_ids": REFUND_KEYS + LOOKUP_KEYS, "trials": 1},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="hb-api-dropped",
+        )
+
+        assert response.status_code == 202, response.content
+        body = response.json()
+        assert body["selection"]["held_back"]["keys"] == [LOOKUP_KEYS[0]]
+        assert body["selection"]["held_back"]["by"] == {"scenario_dropped": 1}
+        assert (body["selection"]["running"], body["total_calls"]) == (9, 9)
+
+    def test_a_case_dropped_because_it_grades_nothing_is_held_back_not_refused(
+        self, user, workspace, storage, auth_client, monkeypatch
+    ):
+        """Certification drops a case exactly when none of its sub-goals is in the
+        catalogue, so a real drop also grades nothing: Run all still sends the rest."""
+        monkeypatch.setattr(
+            "simulate.temporal.client.start_hosted_harness_gateway_workflow",
+            lambda *args, **kwargs: None,
+        )
+        monkeypatch.setattr(
+            "simulate.services.harness_usage.require_harness_call_usage",
+            lambda *args, **kwargs: None,
+        )
+        environment = _ten_certified(
+            user,
+            workspace,
+            storage,
+            "hb-api-real-drop",
+            warnings=[{"code": "scenario_dropped", "keys": [LOOKUP_KEYS[0]]}],
+        )
+        member = HarnessSuiteMember.no_workspace_objects.get(
+            suite_version=environment.suite_version, scenario_key=LOOKUP_KEYS[0]
+        )
+        member.content = {**member.content, "sub_goals": ["no_longer_in_catalogue"]}
+        member.save(update_fields=["content"])
+        _built(environment)
+
+        response = auth_client.post(
+            f"{BASE}/{environment.id}/run/",
+            {"scenario_ids": REFUND_KEYS + LOOKUP_KEYS, "trials": 1},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="hb-api-real-drop",
+        )
+
+        assert response.status_code == 202, response.content
+        body = response.json()
+        assert body["selection"]["held_back"]["keys"] == [LOOKUP_KEYS[0]]
+        assert (body["selection"]["running"], body["total_calls"]) == (9, 9)
+
+    def test_only_dropped_cases_answer_409_naming_certification(
+        self, user, workspace, storage, auth_client, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "simulate.services.harness_usage.require_harness_call_usage",
+            lambda *args, **kwargs: None,
+        )
+        environment = _ten_certified(
+            user,
+            workspace,
+            storage,
+            "hb-api-dropped-all",
+            warnings=[{"code": "scenario_dropped", "keys": [LOOKUP_KEYS[0]]}],
+        )
+        _built(environment)
+
+        response = auth_client.post(
+            f"{BASE}/{environment.id}/run/",
+            {"scenario_ids": [LOOKUP_KEYS[0]], "trials": 1},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="hb-api-dropped-all",
+        )
+
+        assert response.status_code == 409, response.content
+        body = response.json()
+        assert body["error"] == "all_cases_blocked"
+        assert "Certification: dropped when the pair was certified" in body["message"]

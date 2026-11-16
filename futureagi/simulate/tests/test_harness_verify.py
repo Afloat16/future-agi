@@ -1,6 +1,7 @@
 """Held-back cases and verify: what a coding agent may read and run, and the counts it
 gets back when it verifies an agent version on the cases it never saw."""
 
+import dataclasses
 import json
 import uuid
 from types import SimpleNamespace
@@ -1094,7 +1095,7 @@ def test_a_coding_agent_s_verify_refused_by_readiness_names_no_case(
             },
             "reasons": {"start": "The agent did not start in the test sandbox"},
         }
-        return type(plan)(view=view, held=frozenset(keys))
+        return dataclasses.replace(plan, view=view, held=frozenset(keys))
 
     monkeypatch.setattr(harness_readiness, "select_for_run", every_case_held)
 
@@ -1110,3 +1111,18 @@ def test_a_coding_agent_s_verify_refused_by_readiness_names_no_case(
     assert refused.json()["error"] == "all_cases_blocked"
     assert "selection" not in refused.json()
     assert not any(key in refused.content.decode() for key in chosen.scenario_keys)
+
+
+class TestActorRoutesRefuseACodingAgent:
+    def test_a_coding_agent_cannot_read_an_actor_in_a_held_back_scenario(
+        self, api_client, environment, keys
+    ):
+        hidden = ensure_held_back(environment).scenario_keys[0]
+        path = f"{BASE}/{environment.id}/actors/nobody/?scenario_key={hidden}"
+
+        coder = _as(api_client, keys.coder, "get", path)
+
+        # The actor routes are not on a coding agent's allow-list, so no actor read names a held-back case.
+        assert coder.status_code == 403, coder.content
+        assert coder.json()["code"] == "coding_agent_route_refused"
+        assert hidden not in coder.content.decode()

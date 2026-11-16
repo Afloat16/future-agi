@@ -521,7 +521,7 @@ class TestTerminalPaths:
         job = _start(environment).job
 
         with django_capture_on_commit_callbacks(execute=True):
-            canceled = gateway.cancel(job, reason="user")
+            canceled = gateway.cancel(job, reason="user_canceled")
 
         assert canceled.state == "canceled"
         assert _job_metadata(job)["validation_outcome"] == "retry"
@@ -1079,6 +1079,134 @@ class TestRetriedMoves:
         assert _activations(a2)[str(environment.id)] == "validation_retry"
         assert not _settled({"outcome": "validation_retry"})
         assert _settled({"outcome": "validation_retry", "attempts": 3})
+
+
+class TestUnfinishedMoves:
+    """A settled validation whose move did not finish is finished by the next settle."""
+
+    def _passed(self, user, workspace, storage, key):
+        environment, a1, a2 = _with_a2(user, workspace, storage, key)
+        move_agent_default(environment, a2.id, expected_default_id=a1.id, user=user)
+        job = _move_job(environment, a2)
+        _ready(job.assembled_bundle)
+        HostedHarnessJob.no_workspace_objects.filter(id=job.id).update(
+            state="completed"
+        )
+        return environment, a1, a2, job
+
+    def test_a_move_cut_off_after_the_outcome_lands_on_the_next_settle(
+        self, user, workspace, storage
+    ):
+        environment, a1, a2, job = self._passed(user, workspace, storage, "pv-cut")
+        with (
+            patch.object(
+                validation, "complete_move", side_effect=SystemExit("worker stopped")
+            ),
+            pytest.raises(SystemExit),
+        ):
+            validation.finish_validation(job.id)
+        assert _job_metadata(job)["validation_outcome"] == "ready"
+        environment.refresh_from_db()
+        assert environment.agent_version_id == a1.id
+
+        assert validation.finish_validation(job.id) == "ready"
+
+        environment.refresh_from_db()
+        assert environment.agent_version_id == a2.id
+        assert _job_metadata(job)["validation_move_result"] == "activated"
+
+    def test_a_move_that_raised_is_tried_again_then_recorded_failed(
+        self, user, workspace, storage
+    ):
+        environment, a1, a2, job = self._passed(user, workspace, storage, "pv-raise")
+        with patch.object(
+            validation, "complete_move", side_effect=RuntimeError("database blip")
+        ):
+            assert validation.finish_validation(job.id) == "ready"
+        # The user reads the failure at once; the move is still tried again.
+        assert _activations(a2)[str(environment.id)] == "failed"
+        assert "validation_move_result" not in _job_metadata(job)
+
+        assert validation.finish_validation(job.id) == "ready"
+        environment.refresh_from_db()
+        assert environment.agent_version_id == a2.id
+        assert _activations(a2)[str(environment.id)] == "activated"
+
+        environment2, b1, b2, job2 = self._passed(
+            user, workspace, storage, "pv-raise-always"
+        )
+        with patch.object(
+            validation, "complete_move", side_effect=RuntimeError("always")
+        ) as moved:
+            for _ in range(validation.MOVE_TRIES + 2):
+                validation.finish_validation(job2.id)
+        assert moved.call_count == validation.MOVE_TRIES
+        assert _job_metadata(job2)["validation_move_result"] == "failed"
+        assert _activations(b2)[str(environment2.id)] == "failed"
+
+    def test_a_finished_move_is_not_made_again(self, user, workspace, storage):
+        environment, a1, a2, job = self._passed(user, workspace, storage, "pv-once-m")
+        assert validation.finish_validation(job.id) == "ready"
+
+        with patch.object(validation, "complete_move") as moved:
+            assert validation.finish_validation(job.id) is None
+        moved.assert_not_called()
+
+    def test_a_newer_move_replaces_a_move_still_to_be_tried_again(
+        self, user, workspace, storage
+    ):
+        environment, a1, a2, job = self._passed(user, workspace, storage, "pv-replace")
+        with patch.object(validation, "complete_move", side_effect=RuntimeError):
+            validation.finish_validation(job.id)
+        assert _activations(a2)[str(environment.id)] == "failed"
+
+        # Keeping A1 by hand is the newer choice: the failed move is not tried again.
+        move_agent_default(environment, a1.id, expected_default_id=a1.id, user=user)
+        assert _job_metadata(job)["validation_move_result"] == "replaced"
+        assert _activations(a2)[str(environment.id)] == "superseded"
+        assert validation.finish_validation(job.id) is None
+        environment.refresh_from_db()
+        assert environment.agent_version_id == a1.id
+
+    def test_a_later_try_never_overwrites_what_a_newer_move_recorded(
+        self, user, workspace, storage
+    ):
+        environment, a1, a2, job = self._passed(user, workspace, storage, "pv-late")
+        with patch.object(validation, "complete_move", side_effect=RuntimeError):
+            validation.finish_validation(job.id)
+        # A2 lands by another way meanwhile, which records its own activation.
+        HostedHarnessJob.no_workspace_objects.filter(id=environment.id).update(
+            agent_version=a2
+        )
+        from simulate.services.harness_agent_versions import _record_activation
+
+        _record_activation(a2.id, {str(environment.id): "activated"})
+
+        assert validation.finish_validation(job.id) == "ready"
+
+        assert _job_metadata(job)["validation_move_result"] == "already_default"
+        assert _activations(a2)[str(environment.id)] == "activated"
+
+    def test_the_nudge_tick_finishes_an_unfinished_move(self, user, workspace, storage):
+        environment, a1, a2, job = self._passed(user, workspace, storage, "pv-tick")
+        with (
+            patch.object(validation, "complete_move", side_effect=SystemExit),
+            pytest.raises(SystemExit),
+        ):
+            validation.finish_validation(job.id)
+        HostedHarnessJob.no_workspace_objects.filter(id=job.id).update(
+            updated_at=job.updated_at - validation.MOVE_RETRY_AFTER
+        )
+
+        with patch(
+            "simulate.tasks.harness_nudges.schedule_nudge_check_task"
+        ) as scheduled_check:
+            rebuild.tick_nudges()
+        scheduled_check.assert_any_call(environment.id)
+
+        rebuild.check_nudges(environment.id)
+        environment.refresh_from_db()
+        assert environment.agent_version_id == a2.id
 
 
 class TestFailedLanding:
@@ -1982,19 +2110,18 @@ def _recorded(domain, *, code="spawn_failed", process="tool-proxy", message=None
 
 
 class TestFailureRecord:
-    """ALK's own record of why a check failed decides whose failure it is."""
+    """ALK's record of why a check failed is shown, never trusted to say whose failure
+    it is: the tested agent can write the file it comes from."""
 
-    @pytest.mark.parametrize(
-        ("domain", "expected"),
-        [("world", "spawn_failed"), ("harness", "spawn_failed"), ("agent", None)],
-    )
-    def test_the_record_decides_whatever_the_log_says(self, domain, expected):
-        # The log alone would read the opposite way for each.
-        logged = _AGENT_CRASH if domain != "agent" else WORLD_SEED
-        failure = _failure(logged)
-        failure["details"]["harness_failure"] = _recorded(domain)
+    @pytest.mark.parametrize("domain", ["world", "harness", "agent"])
+    def test_the_record_never_decides_whose_failure_it_is(self, domain):
+        agents = _failure(_AGENT_CRASH)
+        agents["details"]["harness_failure"] = _recorded(domain)
+        ours = _failure(WORLD_SEED)
+        ours["details"]["harness_failure"] = _recorded(domain)
 
-        assert validation.platform_failure(failure) == expected
+        assert validation.platform_failure(agents) is None
+        assert validation.platform_failure(ours) == "seed_failed"
 
     def test_without_a_record_the_log_is_read_as_before(self):
         assert validation.platform_failure(_failure(WORLD_SEED)) == "seed_failed"
@@ -2008,20 +2135,23 @@ class TestFailureRecord:
             validation.platform_failure(failure, [{"action": "issue_refund"}]) is None
         )
 
-    def test_the_sandboxs_record_is_kept_and_its_line_replaces_the_logs(
+    def test_a_forged_sandbox_record_is_kept_as_a_diagnostic_and_never_becomes_the_cause(
         self, user, workspace, storage, gateway, monkeypatch
     ):
         environment = _pending(user, workspace, storage, "pv-record")
         job = _start(environment).job
         attempt = _launch(gateway, job)
-        forged = "ProcessRuntimeError: render/internal_forged (world-db): forged by the agent"
+        logs = "ProcessRuntimeError: spawn/spawn_failed (agent): exited 1"
         monkeypatch.setattr(
             gateway,
             "inspect",
-            lambda _: {"exit_code": 78, "logs": forged, "process_logs": ""},
+            lambda _: {"exit_code": 78, "logs": logs, "process_logs": ""},
         )
+        # The tested agent rewrote the record to blame our world.
         record = _recorded(
-            "agent", process="agent", message="spawn/spawn_failed (agent): exited 1"
+            "world",
+            process="world-db",
+            message="render/internal_forged (world-db): forged by the agent",
         )
         files = {assembly.FAILURE_RECORD_PATH: json.dumps(record).encode()}
         monkeypatch.setattr(
@@ -2047,6 +2177,7 @@ class TestFailureRecord:
         assert failure["details"]["harness_failure"] == record
         assert failure["message"].endswith("spawn/spawn_failed (agent): exited 1")
         assert "forged" not in failure["message"]
+        assert assembly.reported_excerpt(failure).startswith(assembly.REPORTED_PREFIX)
 
     def test_an_unreadable_record_is_none(self):
         class Files:
@@ -2078,13 +2209,14 @@ class TestFailureRecord:
             harness_readiness.resolve_pairing(environment)
         )
 
+        # Shown labelled as the sandbox record's report: the agent can write that file.
         assert report["validation"]["error"]["excerpt"] == (
-            "spawn/spawn_failed (agent): exited 1"
+            "Reported by the sandbox's failure record: spawn/spawn_failed (agent): exited 1"
         )
         start = next(row for row in report["rows"] if row["id"] == "start")
         assert {
             "check": "failed_check",
-            "result": "spawn/spawn_failed (agent): exited 1",
+            "result": "Reported by the sandbox's failure record: spawn/spawn_failed (agent): exited 1",
         } in start["evidence"]
 
     def test_the_gateway_keeps_the_excerpt_on_the_failed_bundle(
@@ -2105,7 +2237,9 @@ class TestFailureRecord:
 
         row = _row(environment)
         assert row.state == "failed"
-        assert row.error["excerpt"] == "spawn/spawn_failed (agent): exited 1"
+        assert row.error["excerpt"] == (
+            "Reported by the sandbox's failure record: spawn/spawn_failed (agent): exited 1"
+        )
 
 
 class TestToolRoutingKept:

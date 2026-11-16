@@ -30,6 +30,7 @@ class VersionOrigin(models.TextChoices):
     CHAT = "chat", "Chat"
     BACKFILL = "backfill", "Backfill"
     EXTEND = "extend", "Extend"
+    FIX = "fix", "Fix"
 
 
 class HashKind(models.TextChoices):
@@ -134,6 +135,9 @@ class HarnessEnvironmentVersion(_HarnessPieceVersion):
         blank=True,
         related_name="+",
     )
+    # The per-tool and per-action certification a combined archive holds, kept once
+    # read so the archive is not opened for it again.
+    certification_files = models.JSONField(null=True, blank=True)
 
     class Meta:
         db_table = "simulate_harness_environment_version"
@@ -170,6 +174,15 @@ class HarnessSuiteVersion(_HarnessPieceVersion):
     authored_against = models.ForeignKey(
         HarnessEnvironmentVersion,
         on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    # Set on a suite version private to one "Fix my agent" run: its failing cases and
+    # their variations. It never becomes the default and is listed nowhere.
+    fix_run = models.ForeignKey(
+        "simulate.AgentFixRun",
+        on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name="+",
@@ -538,6 +551,9 @@ class HarnessAssembledBundle(BaseModel):
     sha256 = models.CharField(max_length=64, null=True, blank=True)
     size = models.BigIntegerField(null=True, blank=True)
     certificate = models.JSONField(null=True, blank=True)
+    # The per-tool and per-action certification the sealed bundle holds, kept beside it
+    # so readiness never reads the archive for them.
+    certification_files = models.JSONField(null=True, blank=True)
     warnings = models.JSONField(default=list, blank=True)
     built_by_attempt = models.ForeignKey(
         "simulate.HostedHarnessAttempt",

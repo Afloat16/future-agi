@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from collections.abc import Mapping
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass, field, replace
+from typing import Any, TypedDict
 
 import structlog
 from django.core.cache import cache
@@ -34,25 +35,52 @@ from simulate.services.harness_readiness.catalogue import (
     Reading,
     targets,
 )
+from simulate.services.harness_readiness.children import children
 from simulate.services.harness_versioning import archives, assembly
+from simulate.services.hosted_harness import HostedHarnessError
 
 logger = structlog.get_logger(__name__)
 
-TOOL_CERTIFICATION = "generic-harness/tool-certification.json"
-ACTION_CERTIFICATION = "generic-harness/action-certification.json"
+TOOL_CERTIFICATION = assembly.TOOL_CERTIFICATION
+ACTION_CERTIFICATION = assembly.ACTION_CERTIFICATION
 # Each tool call the qualification conversation made that reached the test world.
-TOOL_ROUTING = "generic-harness/tool-routing-observations.json"
+TOOL_ROUTING = assembly.TOOL_ROUTING
 _MAX_CERTIFICATION_BYTES = 8 * 1024 * 1024
 # An archive's files never change, so they are kept long; an unreadable one is tried
 # again soon.
 _FILES_TTL_SECONDS = 7 * 24 * 3600
 _UNREADABLE_TTL_SECONDS = 300
+# One reader per archive at a time, for as long as a read may take; the others wait up
+# to 10 s (in the request) for its result, then are told to try again.
+_READING_TTL_SECONDS = 300
+_WAIT_STEP_SECONDS = 0.25
+_WAIT_STEPS = 40
+_RETRY_AFTER_SECONDS = 10
 _SANDBOX_SOURCES = frozenset(
     {
         HarnessAgentVersionRuntime.SourceKind.GITHUB,
         HarnessAgentVersionRuntime.SourceKind.ARCHIVE,
     }
 )
+
+
+class CertificationFiles(TypedDict, total=False):
+    """The per-tool and per-action certification an archive holds, its door files (None when absent) and whether
+    each could be read."""
+
+    tools: list[Mapping[str, Any]]
+    actions: list[Mapping[str, Any]]
+    routed: list[Mapping[str, Any]]
+    unobserved: list[Mapping[str, Any]]
+    worker_permissions: Mapping[str, Any] | None
+    door_outcome: Mapping[str, Any] | None
+    worker_limits: Mapping[str, Any] | None
+    actions_to_tools: Mapping[str, Any] | None
+    door_unreadable: bool
+    unreadable: bool
+
+
+_Read = tuple[CertificationFiles, bool]
 
 
 @dataclass(frozen=True)
@@ -72,6 +100,19 @@ class Evidence:
     # Whether a build certificate covered the pairing's suite version; ``None`` when
     # it cannot be told.
     covers_suite: bool | None = None
+    # The certification archive could not be read, so its rows read as unmeasured.
+    unreadable: bool = False
+    # The certificate itself: what made it (harness and framework versions) included.
+    certificate: Mapping[str, Any] = field(default_factory=dict)
+    # What ALK sealed for the world's door: the root `door.json` (whether the door stands, on which surface, or why
+    # not), `worker-limits.json` and the tool proxy's `permissions.json` and `actions.json` (world action to tool);
+    # None when absent or not read.
+    worker_permissions: Mapping[str, Any] | None = None
+    door_outcome: Mapping[str, Any] | None = None
+    worker_limits: Mapping[str, Any] | None = None
+    actions_to_tools: Mapping[str, Any] | None = None
+    # A door file was sealed but could not be read: worker limits are not known.
+    door_unreadable: bool = False
 
 
 def pair_bundle(pairing: Pairing) -> HarnessAssembledBundle | None:
@@ -94,52 +135,142 @@ def certified(bundle: HarnessAssembledBundle | None) -> bool:
     )
 
 
-def _certification_files(object_key: str) -> dict[str, list[Mapping[str, Any]]]:
-    """The per-tool and per-action certification an archive holds, read once per
-    object: archives are content-addressed, so a key never changes what it holds. An
-    archive that cannot be read reads as holding neither, for a few minutes."""
+# Kept rows and cached reads from before the door files were read lack them, so they are read once more.
+_FILES_VERSION = assembly.CERTIFICATION_FILES_VERSION
+
+
+def _mapping(value: Any) -> Mapping[str, Any] | None:
+    return value if isinstance(value, Mapping) else None
+
+
+def _files_of(source: Any) -> CertificationFiles:
+    """The certification files a kept row or a read archive holds, each of its own shape."""
+    return {
+        "tools": _items(source, "tools"),
+        "actions": _items(source, "actions"),
+        "routed": _items(source, "routed"),
+        "unobserved": _items(source, "unobserved"),
+        "worker_permissions": _mapping(_get(source, "worker_permissions")),
+        "door_outcome": _mapping(_get(source, "door_outcome")),
+        "worker_limits": _mapping(_get(source, "worker_limits")),
+        "actions_to_tools": _mapping(_get(source, "actions_to_tools")),
+        "door_unreadable": bool(_get(source, "door_unreadable")),
+    }
+
+
+def _get(source: Any, name: str) -> Any:
+    return source.get(name) if isinstance(source, Mapping) else None
+
+
+def _certification_files(
+    row: HarnessAssembledBundle | HarnessEnvironmentVersion, object_key: str
+) -> CertificationFiles:
+    """The per-tool and per-action certification and tool routing of the archive at
+    ``object_key``, kept on ``row``. A bundle stored since they are kept has them
+    already; an older row has its archive read once, and keeps what was read. An
+    archive that cannot be read is marked ``unreadable``."""
+    kept = row.certification_files
+    if (
+        isinstance(kept, Mapping)
+        and kept.get("object_key") == object_key
+        and kept.get("files_version") == _FILES_VERSION
+    ):
+        return _files_of(kept)
+    files, readable = _read_once(object_key)
+    if not readable:
+        return {**files, "unreadable": True}
+    key_field = (
+        "object_key"
+        if isinstance(row, HarnessAssembledBundle)
+        else "archive_object_key"
+    )
+    type(row)._base_manager.filter(id=row.id, **{key_field: object_key}).update(
+        certification_files={
+            "object_key": object_key,
+            "files_version": _FILES_VERSION,
+            **files,
+        }
+    )
+    return files
+
+
+def _read_once(object_key: str) -> _Read:
+    """The archive's certification files and whether it could be read, by one reader
+    per archive: archives are content-addressed, so a key never changes what it holds.
+    A request that finds another reading waits for its result, and is told to try again
+    when it does not come in time. An archive that cannot be read reads as holding
+    neither, for a few minutes."""
     cache_key = (
-        "harness-readiness-certification:"
+        f"harness-readiness-certification:v{_FILES_VERSION}:"
         + hashlib.sha256(object_key.encode()).hexdigest()
     )
-    cached = cache.get(cache_key)
+    cached = _cached_read(cache_key)
     if cached is not None:
         return cached
+    reading = cache_key + ":reading"
+    if not cache.add(reading, 1, timeout=_READING_TTL_SECONDS):
+        for _ in range(_WAIT_STEPS):
+            time.sleep(_WAIT_STEP_SECONDS)
+            cached = _cached_read(cache_key)
+            if cached is not None:
+                return cached
+        raise HostedHarnessError(
+            "certification_reading",
+            "This pairing's certification is still being read. Try again in a few "
+            "seconds.",
+            status_code=503,
+            retryable=True,
+            details={"retry_after": _RETRY_AFTER_SECONDS},
+        )
     try:
-        found = archives.read_members(
-            archives.get_archive(object_key),
-            {TOOL_CERTIFICATION, ACTION_CERTIFICATION, TOOL_ROUTING},
+        return _read_certification_files(object_key, cache_key)
+    finally:
+        cache.delete(reading)
+
+
+def _cached_read(cache_key: str) -> _Read | None:
+    """A cached reading of the archive; one of another shape, as an earlier release
+    could have stored, is read again rather than trusted."""
+    cached = cache.get(cache_key)
+    if (
+        isinstance(cached, tuple)
+        and len(cached) == 2
+        and isinstance(cached[0], Mapping)
+        and isinstance(cached[1], bool)
+    ):
+        return cached
+    return None
+
+
+def _read_certification_files(object_key: str, cache_key: str) -> _Read:
+    try:
+        found = archives.stream_members(
+            object_key,
+            {
+                TOOL_CERTIFICATION,
+                ACTION_CERTIFICATION,
+                TOOL_ROUTING,
+                assembly.PERMISSIONS_FILE_PATH,
+                assembly.DOOR_OUTCOME_PATH,
+                assembly.WORKER_LIMITS_PATH,
+                assembly.ACTIONS_FILE_PATH,
+            },
             _MAX_CERTIFICATION_BYTES,
         )
-    except Exception as exc:  # noqa: BLE001 - storage, network or a truncated archive
+    except Exception as exc:
+        # Storage, network or a truncated archive.
         logger.warning(
             "harness_readiness_certification_unreadable",
             object_key=object_key,
             error=type(exc).__name__,
         )
-        unreadable: dict[str, list[Mapping[str, Any]]] = {
-            "tools": [],
-            "actions": [],
-            "routed": [],
-            "unobserved": [],
-        }
+        unreadable: _Read = (_files_of({}), False)
         cache.set(cache_key, unreadable, timeout=_UNREADABLE_TTL_SECONDS)
         return unreadable
-    files = {
-        "tools": _items(_json(found.get(TOOL_CERTIFICATION)), "tools"),
-        "actions": _items(_json(found.get(ACTION_CERTIFICATION)), "actions"),
-        "routed": _items(_json(found.get(TOOL_ROUTING)), "tools"),
-        "unobserved": _items(_json(found.get(TOOL_ROUTING)), "unobserved"),
-    }
-    cache.set(cache_key, files, timeout=_FILES_TTL_SECONDS)
-    return files
-
-
-def _json(body: bytes | None) -> Any:
-    try:
-        return json.loads(body) if body else None
-    except ValueError:
-        return None
+    kept = assembly.certification_files(found, object_key)
+    read: _Read = (_files_of(kept), True)
+    cache.set(cache_key, read, timeout=_FILES_TTL_SECONDS)
+    return read
 
 
 def _items(document: Any, name: str) -> list[Mapping[str, Any]]:
@@ -170,8 +301,8 @@ def agent_tools(pairing: Pairing) -> list[Mapping[str, Any]] | None:
 
 def read_evidence(pairing: Pairing, bundle: HarnessAssembledBundle | None) -> Evidence:
     """A certified pair bundle, else the environment version's build certificate."""
-    if certified(bundle):
-        files = _certification_files(bundle.object_key)
+    if certified(bundle) and bundle is not None and bundle.object_key:
+        files = _certification_files(bundle, bundle.object_key)
         checks = (bundle.certificate or {}).get("checks")
         kept = (bundle.certificate or {}).get("tool_routing")
         kept = kept if isinstance(kept, Mapping) else {}
@@ -184,18 +315,25 @@ def read_evidence(pairing: Pairing, bundle: HarnessAssembledBundle | None) -> Ev
             # Kept on the bundle by the check, else sealed in its archive.
             routed=kept.get("tools") or files.get("routed", []),
             unobserved=kept.get("unobserved") or files.get("unobserved", []),
+            unreadable=bool(files.get("unreadable")),
+            certificate=bundle.certificate or {},
+            worker_permissions=_mapping(files.get("worker_permissions")),
+            door_outcome=_mapping(files.get("door_outcome")),
+            worker_limits=_mapping(files.get("worker_limits")),
+            actions_to_tools=_mapping(files.get("actions_to_tools")),
+            door_unreadable=bool(files.get("door_unreadable")),
         )
     version = _certified_version(pairing.environment_version)
     data = _build_certification(version) if version is not None else None
-    if data is None:
+    if version is None or data is None:
         return Evidence("none", {}, [], [], None)
     certificate = data.get("certificate")
     checks = certificate.get("checks") if isinstance(certificate, Mapping) else None
     # Only an archive kept whole holds the sealed tool certification.
     files = (
-        _certification_files(version.archive_object_key)
+        _certification_files(version, version.archive_object_key)
         if version.archive_layout == ArchiveLayout.COMBINED
-        else {}
+        else CertificationFiles()
     )
     tools = files.get("tools", [])
     return Evidence(
@@ -208,6 +346,13 @@ def read_evidence(pairing: Pairing, bundle: HarnessAssembledBundle | None) -> Ev
         unobserved=files.get("unobserved", []),
         made_for=None if version.id == pairing.environment_version.id else version,
         covers_suite=_covers_suite(version, pairing.suite_version),
+        unreadable=bool(files.get("unreadable")),
+        certificate=certificate if isinstance(certificate, Mapping) else {},
+        worker_permissions=_mapping(files.get("worker_permissions")),
+        door_outcome=_mapping(files.get("door_outcome")),
+        worker_limits=_mapping(files.get("worker_limits")),
+        actions_to_tools=_mapping(files.get("actions_to_tools")),
+        door_unreadable=bool(files.get("door_unreadable")),
     )
 
 
@@ -318,7 +463,7 @@ def _tool_discovery(evidence: Evidence) -> Reading:
             "tool_rejected",
             (
                 "Not discoverable: " + ", ".join(rejected)
-                if rejected
+                if rejected or ratio is None
                 else f"{ratio[0]} of {ratio[1]} tools were discovered"
             ),
             targets("tool", rejected, "rejected"),
@@ -337,7 +482,10 @@ def _tool_discovery(evidence: Evidence) -> Reading:
     return Reading("not_run", evidence=seen)
 
 
-def _tool_routing(evidence: Evidence) -> Reading:
+def _tool_routing(evidence: Evidence, in_run: RoutedInRun | None = None) -> Reading:
+    """``in_run`` are the tools the pairing's newest finished run recorded reaching
+    the test world, read only when the certificate keeps no routing record (a voice
+    check places no call)."""
     seen = _check_list(evidence.checks, "action_behavior")
     ratio = _ratio(evidence.checks.get("action_behavior"))
     failed = _actions(evidence, "failed")
@@ -347,12 +495,24 @@ def _tool_routing(evidence: Evidence) -> Reading:
             "action_failed",
             (
                 "Failed its probe: " + ", ".join(failed)
-                if failed
+                if failed or ratio is None
                 else f"{ratio[0]} of {ratio[1]} tool probes passed"
             ),
             targets("action", failed, "failed"),
             seen,
         )
+    if in_run is not None and in_run.tools:
+        evidence = replace(
+            evidence,
+            routed=[{"tool": name, "routed": True} for name in in_run.tools],
+        )
+        seen = [
+            *seen,
+            {
+                "check": "tools_routed_in_run",
+                "result": f"{in_run.ordinal}: " + ", ".join(in_run.tools),
+            },
+        ]
     # Routing is read only from what the test world itself received in qualification. A
     # probe that passed is the harness calling the tool, not the agent's call reaching it.
     routed = _routed(evidence, True)
@@ -421,6 +581,7 @@ def _routed(evidence: Evidence, routed: bool) -> list[str]:
 
 _UNOBSERVED_REASONS = {
     "reaches_outside": "its contract says it leaves the test world, so it was not asked",
+    "has_effects": "its contract says it changes something, so the check did not call it",
     "not_called": "asked, but not called",
     "request_failed": "asked, but the agent did not answer",
     "not_asked": "not asked: the check's time for tool requests ran out",
@@ -511,6 +672,7 @@ def _cancel(pairing: Pairing) -> Reading:
             attempt_number=F("job__current_attempt_number"),
             # A validation job never started the agent; its key is set only on them.
             job__payload__metadata__certify_only__isnull=True,
+            provider_ref__isnull=False,
         )
         .exclude(provider_ref="")
         .exclude(provider_ref__startswith="pending:")
@@ -518,15 +680,13 @@ def _cancel(pairing: Pairing) -> Reading:
         .order_by("-job__cancel_requested_at")
         .first()
     )
-    if attempt is None:
+    stopped = attempt.job.cancel_requested_at if attempt is not None else None
+    if attempt is None or stopped is None:
         return Reading(
             "not_run", "stop_not_observed", "No run of this agent stopped yet"
         )
     seen: list[EvidenceCheck] = [
-        {
-            "check": "stop_requested",
-            "result": attempt.job.cancel_requested_at.isoformat(),
-        }
+        {"check": "stop_requested", "result": stopped.isoformat()}
     ]
     if attempt.cleanup_verified_at is None:
         return Reading(
@@ -534,7 +694,7 @@ def _cancel(pairing: Pairing) -> Reading:
             "stop_unconfirmed",
             "The last Stop was asked for; our cleanup is not confirmed yet",
             evidence=seen,
-            checked_at=attempt.job.cancel_requested_at.isoformat(),
+            checked_at=stopped.isoformat(),
         )
     seen.append(
         {"check": "sandbox_absent", "result": attempt.cleanup_verified_at.isoformat()}
@@ -552,16 +712,115 @@ def _cancel(pairing: Pairing) -> Reading:
     )
 
 
+@dataclass(frozen=True)
+class RoutedInRun:
+    """The tools one finished run of the pairing recorded reaching the test world, and
+    that run's number among the environment's runs."""
+
+    tools: list[str]
+    ordinal: int
+
+
+# A run's tool trace is read up to this size, and kept by its content digest.
+_MAX_TRACE_BYTES = 2 * 1024 * 1024
+_TRACE_TTL_SECONDS = 7 * 24 * 3600
+
+
+def routed_from_runs(pairing: Pairing) -> RoutedInRun | None:
+    """The tools the newest finished run of this exact pairing (its agent, environment
+    and suite versions) recorded with an outcome in its tool calls, any outcome;
+    ``None`` without such a run or call."""
+    if pairing.agent_version is None:
+        return None
+    runs = HostedHarnessJob.no_workspace_objects.filter(
+        environment_id=pairing.environment.id,
+        test_execution_id__isnull=False,
+        # A validation job never ran the agent's cases; its key is set only on them.
+        payload__metadata__certify_only__isnull=True,
+    )
+    run = (
+        runs.filter(
+            agent_version_id=pairing.agent_version.id,
+            environment_version_id=pairing.environment_version.id,
+            suite_version_id=pairing.suite_version.id,
+            state=HostedHarnessJob.State.COMPLETED,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if run is None:
+        return None
+    tools: set[str] = set()
+    for artifact in HostedHarnessArtifact.no_workspace_objects.filter(
+        job=run, kind="tool_trace"
+    ):
+        tools.update(_traced_tools(artifact.sha256, artifact.object_key))
+    if not tools:
+        return None
+    ordinal = runs.filter(created_at__lte=run.created_at).count()
+    return RoutedInRun(sorted(tools), ordinal)
+
+
+def _traced_tools(sha256: str, object_key: str) -> list[str]:
+    """The tools a run's tool trace (one JSON call per line) recorded an outcome for;
+    a trace that cannot be read records none."""
+    cache_key = f"harness-readiness-trace:{sha256}"
+    cached: list[str] | None = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        body = _read_trace(object_key)
+    except Exception as exc:  # noqa: BLE001 - storage or network: nothing is shown
+        logger.warning(
+            "harness_readiness_trace_unreadable",
+            object_key=object_key,
+            error=type(exc).__name__,
+        )
+        return []
+    found: set[str] = set()
+    for line in body[:_MAX_TRACE_BYTES].decode("utf-8", "replace").splitlines():
+        try:
+            call = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(call, Mapping):
+            continue
+        name = str(call.get("name") or call.get("tool") or "")
+        if name and ("output" in call or call.get("is_error") is not None):
+            found.add(name)
+    tools = sorted(found)
+    cache.set(cache_key, tools, timeout=_TRACE_TTL_SECONDS)
+    return tools
+
+
+def _read_trace(object_key: str) -> bytes:
+    from tfc.settings.settings import UPLOAD_BUCKET_NAME
+    from tfc.utils.storage_client import get_storage_client
+
+    response = get_storage_client().get_object(UPLOAD_BUCKET_NAME, object_key)
+    try:
+        return response.read(_MAX_TRACE_BYTES)
+    finally:
+        response.close()
+        response.release_conn()
+
+
 def readings(pairing: Pairing, evidence: Evidence) -> dict[str, Reading]:
     """What the certificate says about each measured row; ``cancel`` reads the agent
-    version's last Stop instead."""
+    version's last Stop instead, and tool routing the pairing's runs when the
+    certificate keeps no routing record."""
     checks = evidence.checks
+    in_run = (
+        routed_from_runs(pairing)
+        if not evidence.routed and not evidence.unobserved
+        else None
+    )
     return {
         "cancel": _cancel(pairing),
         "start": _start(evidence),
         "message": _single(checks, "chat_ingress", "message_failed"),
         "tool_discovery": _tool_discovery(evidence),
-        "tool_routing": _tool_routing(evidence),
+        "tool_routing": _tool_routing(evidence, in_run),
         "state": _single(checks, "schema_and_seed", "state_failed"),
         "reset": _reset(evidence, pairing.runtime),
     }
@@ -575,7 +834,7 @@ _RUNS_READ = 20
 _WHOLE_REPLY_KINDS = frozenset({"http", "callable", "command"})
 
 
-def _runs(pairing: Pairing) -> list[Any]:
+def recent_runs(pairing: Pairing) -> list[Any]:
     """The newest runs of the pairing's agent and environment version."""
     if pairing.agent_version is None:
         return []
@@ -593,7 +852,7 @@ def _runs(pairing: Pairing) -> list[Any]:
     )
 
 
-def _contract(pairing: Pairing) -> Mapping[str, Any]:
+def contract_of(pairing: Pairing) -> Mapping[str, Any]:
     contract = (pairing.environment_version.documents or {}).get("contract")
     return contract if isinstance(contract, Mapping) else {}
 
@@ -623,7 +882,7 @@ def _continuity(runs: list[Any]) -> Reading:
 
 
 def _streaming(pairing: Pairing) -> Reading:
-    contract = _contract(pairing)
+    contract = contract_of(pairing)
     interface = (contract.get("runtime") or {}).get("interface") or {}
     kind = str(interface.get("kind") or "") if isinstance(interface, Mapping) else ""
     if str(contract.get("modality") or "").lower() == "voice":
@@ -654,7 +913,7 @@ def _streaming(pairing: Pairing) -> Reading:
 
 
 def _audio(pairing: Pairing, runs: list[Any]) -> Reading:
-    if str(_contract(pairing).get("modality") or "").lower() != "voice":
+    if str(contract_of(pairing).get("modality") or "").lower() != "voice":
         return Reading(
             "not_applicable", "not_voice", "A chat connection carries no audio"
         )
@@ -719,10 +978,9 @@ def _cost(runs: list[Any]) -> Reading:
     )
 
 
-def observed(pairing: Pairing) -> dict[str, Reading]:
-    """What this agent's runs on this environment version show for the rows no check
+def observed(pairing: Pairing, runs: list[Any]) -> dict[str, Reading]:
+    """What this agent's ``runs`` on this environment version show for the rows no check
     measures; they hold no case and never lower the answer."""
-    runs = _runs(pairing)
     return {
         "continuity": _continuity(runs),
         "streaming": _streaming(pairing),
@@ -730,8 +988,10 @@ def observed(pairing: Pairing) -> dict[str, Reading]:
         "files": Reading(
             "not_run",
             "files_not_recorded",
-            "No run records the files an agent produces yet",
+            "Nothing records the files the agent writes yet, so checks on files are"
+            " not verified",
         ),
         "resume": _resume(runs),
         "cost": _cost(runs),
+        "children": children(contract_of(pairing).get("workers"), runs),
     }

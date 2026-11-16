@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
 from simulate.models import HarnessAgentVersionRuntime, HarnessAssembledBundle
+from simulate.services.harness_readiness import release
 from simulate.services.harness_readiness.catalogue import (
     CATALOGUE,
     GATE_OPEN,
@@ -93,6 +94,7 @@ def rows(
     bundle: HarnessAssembledBundle | None,
     *,
     agent_tools: list[Mapping[str, Any]] | None = None,
+    runs: list[Any],
 ) -> list[RowView]:
     """One row per capability, first matching rule wins.
 
@@ -126,7 +128,7 @@ def rows(
     rows: list[RowView] = []
     statuses: dict[str, Status] = {}
     fresh: dict[str, Status] = {}
-    seen = observed(pairing)
+    seen = observed(pairing, runs)
     for capability in CATALOGUE:
         reading = measured.get(capability.id)
         if not capability.measured and capability.id in seen:
@@ -146,7 +148,9 @@ def rows(
                 capability,
                 "untested",
                 reason_code="no_check_yet",
-                reason="No check measures this yet",
+                reason=_NOT_MEASURED_WHY.get(
+                    capability.id, "No check measures this yet"
+                ),
             )
         elif capability.id == "start" and preflight is not None:
             row = _row(
@@ -155,7 +159,9 @@ def rows(
                 reading=preflight,
                 reason_code=preflight.reason_code,
                 reason=preflight.reason,
-                checked_at=pairing.runtime.updated_at.isoformat(),
+                checked_at=(
+                    pairing.runtime.updated_at.isoformat() if pairing.runtime else None
+                ),
             )
         elif capability.id == "cancel":
             # Read from the agent's runs, not the certificate: never Stale or gated.
@@ -171,13 +177,13 @@ def rows(
                 checked_at=reading.checked_at,
             )
         elif capability.id in gap:
-            found = gap[capability.id]
+            found = _with_measured(gap[capability.id], reading)
             if capability.id == "tool_routing" and named:
                 names = [one["action"] for one in named]
                 found = Reading(
                     found.finding,
                     found.reason_code,
-                    found.reason + "; failed its probe: " + ", ".join(names),
+                    f"{found.reason}; failed its probe: " + ", ".join(names),
                     found.targets + targets("action", names, "failed"),
                 )
             status, _, _ = _status(found)
@@ -188,6 +194,13 @@ def rows(
                 reason_code=found.reason_code,
                 reason=found.reason,
             )
+            # The measured reading still holds the cases the gap's tools leave out.
+            if stale is not None:
+                row["stale_because"] = stale
+                if stale != "built_with_unknown":
+                    row["was"] = _gated(capability, reading, fresh)[0]
+            else:
+                row["blocked_by"] = _gated(capability, reading, statuses)[3]
         elif capability.id == "tool_routing" and named:
             names = [one["action"] for one in named]
             failed = Reading(
@@ -203,7 +216,7 @@ def rows(
                 reading=failed,
                 reason_code=failed.reason_code,
                 reason=failed.reason,
-                checked_at=bundle.updated_at.isoformat(),
+                checked_at=bundle.updated_at.isoformat() if bundle else None,
             )
         else:
             fresh[capability.id] = _gated(capability, reading, fresh)[0]
@@ -245,10 +258,26 @@ def rows(
             _keep_structural(row, structural)
         statuses[capability.id] = row["status"]
         fresh.setdefault(capability.id, row["status"])
-        row["fix"] = _fix(pairing, row, certified=evidence.source == "pair_certificate")
+        # A certificate made by an earlier harness is checked again by a Re-check.
+        row["fix"] = _fix(
+            pairing,
+            row,
+            certified=evidence.source == "pair_certificate"
+            and stale != "harness_version",
+        )
         row["consequence"] = consequence(row, connection(pairing.runtime))
         rows.append(row)
     return rows
+
+
+# What an unmeasured row lacks, so its Untested reason names what would measure it;
+# files are read from the agent's runs (``observed``).
+_NOT_MEASURED_WHY: dict[str, str] = {
+    "browser": "Nothing records the agent's browser yet, so checks on pages are not"
+    " verified",
+    "hidden_material": "Not checked yet whether the agent can read the grading"
+    " material. Treat this run as not blind",
+}
 
 
 def _keep_structural(row: RowView, structural: Any) -> None:
@@ -291,6 +320,25 @@ def _agent_gap(
     )
 
 
+def _with_measured(found: Reading, measured: Reading) -> Reading:
+    """The agent-side gap with the row's own measured failure kept beside it: a tool
+    the evidence failed stays failed whatever the agent version changed. A failure
+    naming no tool, on either side, holds every case."""
+    if measured.finding != "failed":
+        return found
+    reason = f"{found.reason}; {measured.reason}"
+    if found.finding != "failed":
+        return Reading(found.finding, found.reason_code, reason, [], measured.evidence)
+    named = found.targets and measured.targets
+    return Reading(
+        "failed",
+        found.reason_code,
+        reason,
+        found.targets + measured.targets if named else [],
+        measured.evidence,
+    )
+
+
 def _gated(
     capability: Capability, reading: Reading, statuses: Mapping[str, Status]
 ) -> tuple[Status, str | None, str | None, str | None]:
@@ -304,7 +352,7 @@ def _gated(
 
 
 def _failed_check_excerpt(bundle: HarnessAssembledBundle | None) -> str | None:
-    """The redacted line ALK recorded for the check this pairing failed."""
+    """What the sandbox's failure record reported for the check this pairing failed, labelled as reported."""
     if bundle is None or bundle.state != HarnessAssembledBundle.State.FAILED:
         return None
     excerpt = (bundle.error or {}).get("excerpt")
@@ -321,7 +369,9 @@ def failed_actions(bundle: HarnessAssembledBundle | None) -> list[Mapping[str, A
     ]
 
 
-StaleBecause = Literal["agent_version", "environment_version", "suite_version"]
+StaleBecause = Literal[
+    "agent_version", "environment_version", "suite_version", "harness_version"
+]
 
 
 def _stale(
@@ -330,9 +380,16 @@ def _stale(
     """Rule 3: evidence other than the pairing's own was measured with the agent the
     environment version was built with, on the environment version that holds the
     build certificate (an edit saves a new one without certifying it) and on the
-    scenarios that build made."""
+    scenarios that build made. Any certificate, the pairing's own included, is Stale
+    once runs use another harness version than the one that made it."""
+    harness_moved = (
+        release.harness_outdated(
+            evidence.certificate, pairing.environment.organization_id
+        )
+        is not None
+    )
     if evidence.source == "pair_certificate":
-        return None
+        return "harness_version" if harness_moved else None
     built_with = pairing.environment_version.agent_version_id
     if built_with is None:
         return "built_with_unknown"
@@ -343,19 +400,55 @@ def _stale(
         return "environment_version"
     if evidence.covers_suite is False:
         return "suite_version"
+    if harness_moved:
+        return "harness_version"
     return None
+
+
+def _picked_agent_frameworks(pairing: Pairing) -> dict[str, str]:
+    """The frameworks the newest certificate of the picked agent version, on any
+    version of this environment, records."""
+    if pairing.agent_version is None:
+        return {}
+    certificate = (
+        HarnessAssembledBundle._base_manager.filter(
+            job_id=pairing.environment.id,
+            agent_version_id=pairing.agent_version.id,
+            state=HarnessAssembledBundle.State.READY,
+            certificate__runtime__frameworks__isnull=False,
+        )
+        .order_by("-updated_at", "-id")
+        .values_list("certificate", flat=True)
+        .first()
+    )
+    return release.frameworks(certificate)
 
 
 def _stale_reason(
     stale: StaleBecause, pairing: Pairing, evidence: Evidence
 ) -> tuple[str, str]:
+    if stale == "harness_version":
+        moved = release.harness_outdated(
+            evidence.certificate, pairing.environment.organization_id
+        )
+        was, now = moved if moved is not None else ("an earlier version", "another")
+        return ("harness_changed", f"Checked with harness {was}; runs now use {now}")
     if stale == "agent_version":
+        changed = release.framework_change(
+            release.frameworks(evidence.certificate), _picked_agent_frameworks(pairing)
+        )
+        if changed is not None:
+            dist, was, now = changed
+            return (
+                "framework_changed",
+                f"Checked with {dist} {was}; this agent version uses {now}",
+            )
         return (
             "agent_changed",
             "Checked with the agent version the environment was built with",
         )
     now = _label(pairing.environment_version.version_number)
-    if stale == "environment_version":
+    if stale == "environment_version" and evidence.made_for is not None:
         was = _label(evidence.made_for.version_number)
         return (
             "environment_changed",
@@ -603,7 +696,10 @@ def _fix(pairing: Pairing, row: RowView, *, certified: bool) -> Fix | None:
         }
     )
     code = row["reason_code"]
-    if code in ("preflight_failed", "preflight_pending"):
+    if (
+        code in ("preflight_failed", "preflight_pending")
+        and pairing.agent_version is not None
+    ):
         return {
             "type": "preflight",
             "category": "startup",
@@ -711,10 +807,15 @@ def worst(statuses: Iterable[Status]) -> Status:
 
 
 def answer(
-    rows: list[RowView], *, validating: bool, failed: bool, named: bool
+    rows: list[RowView],
+    *,
+    validating: bool,
+    failed: bool,
+    named: bool,
+    blocked_workers: int = 0,
 ) -> AnswerView:
-    """Read from the measured rows: unmeasured ones hold no case back. A failed pair
-    whose failure names no action blocks the answer without blocking a row."""
+    """Read from the measured rows and the blocked workers: unmeasured rows hold no case back. A failed pair whose
+    failure names no action blocks the answer without blocking a row."""
     lowest = worst(
         row["status"]
         for row in rows
@@ -723,9 +824,10 @@ def answer(
         and not (row["id"] == "cancel" and row["status"] == "untested")
     )
     pair_failed = failed and not named
+    kind: Literal["ready", "blocked", "stale", "unchecked", "validating"]
     if validating:
         kind = "validating"
-    elif lowest == "blocked" or pair_failed:
+    elif lowest == "blocked" or pair_failed or blocked_workers:
         kind = "blocked"
     elif lowest == "stale":
         kind = "stale"

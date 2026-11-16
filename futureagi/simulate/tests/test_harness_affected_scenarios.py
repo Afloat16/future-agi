@@ -28,9 +28,6 @@ from simulate.tests.test_harness_readiness import (
     _with_a2,
 )
 from simulate.tests.test_harness_readiness import (  # noqa: F401 - fixture
-    readiness_on as readiness_on,
-)
-from simulate.tests.test_harness_readiness import (  # noqa: F401 - fixture
     scheduled as scheduled,
 )
 from simulate.tests.test_harness_readiness import (  # noqa: F401 - fixture
@@ -39,7 +36,7 @@ from simulate.tests.test_harness_readiness import (  # noqa: F401 - fixture
 from simulate.tests.test_harness_versioning_assembly import _row
 from simulate.tests.test_harness_versioning_runs import _run
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("readiness_on")]
 
 LOOKUP = "lookup_order"
 REFUND = "issue_refund"
@@ -147,6 +144,8 @@ class TestBuckets:
         )
         assert chosen["lists"]["blocked"] == {"keys": REFUND_KEYS, "truncated": False}
         assert chosen["lists"]["eligible"]["keys"] == LOOKUP_KEYS
+        # The run dialog names the area holding them back as the server picks it.
+        assert chosen["blocking_area"] == "tool_binding"
         routing = _rows(report)["tool_routing"]
         assert routing["needed_by"] == 10
         assert routing["affected"] == {
@@ -268,6 +267,30 @@ class TestBuckets:
         ]
         assert (chosen["requested"], chosen["eligible"]) == (1, 1)
 
+    def test_a_run_holds_back_a_case_certifying_dropped(self, user, workspace, storage):
+        """Run all sends every key of the suite: a dropped case is held back and named,
+        and the rest still run."""
+        environment = _ten_certified(
+            user,
+            workspace,
+            storage,
+            "as-dropped-run",
+            warnings=[{"code": "scenario_dropped", "keys": [LOOKUP_KEYS[0]]}],
+        )
+
+        plan = harness_readiness.select_for_run(
+            _pairing(environment),
+            keys=[LOOKUP_KEYS[0], LOOKUP_KEYS[1]],
+            trials=1,
+        )
+
+        assert plan.held == frozenset({LOOKUP_KEYS[0]})
+        assert (plan.view["requested"], plan.view["running"]) == (2, 1)
+        assert plan.view["held_back"]["by"] == {"scenario_dropped": 1}
+        assert plan.view["reasons"] == {
+            "scenario_dropped": "dropped when the pair was certified"
+        }
+
     def test_reset_needed_by_every_case_of_a_seeded_world_run(
         self, user, workspace, storage
     ):
@@ -368,6 +391,56 @@ class TestBuckets:
         assert message["needed_by"] == 0
         assert message["affected"]["count"] == 0
         assert report["selection"]["eligible"] == 10
+
+
+class TestGrading:
+    """Whether the judge answered in the check decides if judged checks can be graded."""
+
+    def _judged(self, user, workspace, storage, key, checks):
+        environment = _environment(user, workspace, storage, key)
+        _suite(
+            environment,
+            [
+                _doc("polite-1", sub_goals=("polite",)),
+                _doc("polite-2", sub_goals=("looked_up", "polite")),
+                _doc("coded", solution=(LOOKUP,)),
+            ],
+        )
+        _certify(environment, storage, checks=checks)
+        return environment
+
+    def test_an_unreachable_judge_makes_judged_cases_not_gradable(
+        self, user, workspace, storage
+    ):
+        environment = self._judged(
+            user,
+            workspace,
+            storage,
+            "gr-judge-down",
+            {**PASSED, "judge_reachable": "failed"},
+        )
+
+        grading = _select(environment)["selection"]["grading"]
+
+        assert grading["not_gradable"] == [
+            {"key": "polite-1", "reason": "judge_unavailable"},
+            {"key": "polite-2", "reason": "judge_unavailable"},
+        ]
+        assert grading["gradable"] == 1
+
+    @pytest.mark.parametrize("judge", ["passed", "not_run", None])
+    def test_an_old_certificate_without_the_judge_check_reports_no_gap(
+        self, user, workspace, storage, judge
+    ):
+        checks = {**PASSED, **({"judge_reachable": judge} if judge else {})}
+        environment = self._judged(
+            user, workspace, storage, f"gr-judge-{judge}", checks
+        )
+
+        grading = _select(environment)["selection"]["grading"]
+
+        assert grading["not_gradable"] == []
+        assert grading["gradable"] == 3
 
 
 class TestRunRefusals:
@@ -604,7 +677,11 @@ class TestHoldBack:
             storage,
             "hb-provider",
             tools=[
-                {"tool": tool, "availability": "runtime_only", "entrypoint_mode": "provider"}
+                {
+                    "tool": tool,
+                    "availability": "runtime_only",
+                    "entrypoint_mode": "provider",
+                }
                 for tool in (LOOKUP, REFUND)
             ],
             actions=NOT_PROBED,
@@ -739,6 +816,181 @@ class TestAgentGapCases:
 
         assert report["selection"]["lists"]["blocked"]["keys"] == REFUND_KEYS
         assert _rows(report)["tool_routing"]["affected"]["count"] == 4
+
+    def test_an_agent_read_with_no_tools_holds_back_the_cases_using_world_tools(
+        self, user, workspace, storage
+    ):
+        environment, pairing = self._a2(user, workspace, storage, "gap-cases-none", ())
+
+        report = _select(environment, pairing=pairing)
+
+        discovery = _rows(report)["tool_discovery"]
+        assert (discovery["status"], discovery["reason_code"]) == (
+            "blocked",
+            "tool_not_in_agent",
+        )
+        assert report["selection"]["blocked"] == 10
+        plan = harness_readiness.select_for_run(
+            pairing, keys=REFUND_KEYS + LOOKUP_KEYS, trials=1
+        )
+        assert plan.view["running"] == 0
+
+    def test_a_changed_signature_keeps_another_tool_the_world_never_received(
+        self, user, workspace, storage
+    ):
+        environment, a2 = _with_a2(
+            user,
+            workspace,
+            storage,
+            "gap-cases-routing-both",
+            tools=(SAME_TOOLS[0], _tool(REFUND, "order_id")),
+        )
+        _suite(environment, _ten())
+        _built(environment, contract=WORLD)
+        _certify(environment, storage, agent=a2)
+        pairing = _pairing(environment, a2)
+        HarnessAssembledBundle._base_manager.filter(
+            id=harness_readiness.pair_bundle(pairing).id
+        ).update(
+            certificate={
+                "checks": PASSED,
+                "tool_routing": {
+                    "tools": [
+                        {"tool": REFUND, "routed": True},
+                        {"tool": LOOKUP, "routed": False, "reason": "not_received"},
+                    ]
+                },
+            }
+        )
+        cache.clear()
+
+        report = _select(environment, pairing=pairing)
+        routing = _rows(report)["tool_routing"]
+
+        assert (routing["status"], routing["reason_code"]) == (
+            "blocked",
+            "tool_signature_changed",
+        )
+        assert {one["name"] for one in routing["targets"]} == {REFUND, LOOKUP}
+        assert "the test world never received it: " + LOOKUP in routing["reason"]
+        # A lookup case needs only the tool the world never received: it is held too.
+        assert set(report["selection"]["lists"]["blocked"]["keys"]) == set(
+            REFUND_KEYS + LOOKUP_KEYS
+        )
+        plan = harness_readiness.select_for_run(
+            pairing, keys=REFUND_KEYS + LOOKUP_KEYS, trials=1
+        )
+        assert plan.view["running"] == 0
+
+    def test_a_tool_the_agent_lacks_keeps_another_tool_discovery_rejected(
+        self, user, workspace, storage
+    ):
+        environment, a2 = _with_a2(
+            user, workspace, storage, "gap-cases-discovery-both", tools=(SAME_TOOLS[0],)
+        )
+        _suite(environment, _ten())
+        _built(environment, contract=WORLD)
+        _certify(
+            environment,
+            storage,
+            agent=a2,
+            tools=[
+                {"tool": LOOKUP, "availability": "rejected", "reason": "no schema"},
+                {"tool": REFUND, "availability": "certified", "reason": ""},
+            ],
+        )
+        pairing = _pairing(environment, a2)
+
+        report = _select(environment, pairing=pairing)
+        discovery = _rows(report)["tool_discovery"]
+
+        assert (discovery["status"], discovery["reason_code"]) == (
+            "blocked",
+            "tool_not_in_agent",
+        )
+        assert {one["name"] for one in discovery["targets"]} == {REFUND, LOOKUP}
+        assert "Not discoverable: " + LOOKUP in discovery["reason"]
+        # A lookup case needs only the rejected tool: blocked, not left to run Untested.
+        assert set(report["selection"]["lists"]["blocked"]["keys"]) == set(
+            REFUND_KEYS + LOOKUP_KEYS
+        )
+        plan = harness_readiness.select_for_run(
+            pairing, keys=REFUND_KEYS + LOOKUP_KEYS, trials=1
+        )
+        assert plan.view["running"] == 0
+
+    def _stale_gap(self, user, workspace, storage, key, *, actions=None):
+        """A2 changes the refund tool's signature and has no pair check of its own:
+        its other rows read the build certificate, measured with A1. Every case is
+        proved, so only the rows can hold one."""
+        environment, a2 = _with_a2(
+            user,
+            workspace,
+            storage,
+            key,
+            tools=(SAME_TOOLS[0], _tool(REFUND, "order_id")),
+        )
+        _suite(environment, _ten())
+        _built(environment, contract=WORLD, actions=actions)
+        HarnessSuiteValidation.no_workspace_objects.update_or_create(
+            suite_version=environment.suite_version,
+            environment_version=environment.environment_version,
+            defaults={
+                "status": "passed",
+                "proved_at": timezone.now(),
+                "proofs": {key: {"holds": True} for key in REFUND_KEYS + LOOKUP_KEYS},
+            },
+        )
+        cache.clear()
+        return environment, _pairing(environment, a2)
+
+    def test_a_changed_signature_keeps_the_other_cases_stale(
+        self, user, workspace, storage
+    ):
+        environment, pairing = self._stale_gap(
+            user, workspace, storage, "gap-cases-stale"
+        )
+
+        report = _select(environment, pairing=pairing)
+        routing = _rows(report)["tool_routing"]
+        chosen = report["selection"]
+
+        assert (routing["status"], routing["reason_code"]) == (
+            "blocked",
+            "tool_signature_changed",
+        )
+        assert (routing["stale_because"], routing["was"]) == (
+            "agent_version",
+            "partial",
+        )
+        # Without the gap the lookup cases are Stale; the gap must not make them eligible.
+        assert chosen["lists"]["blocked"]["keys"] == REFUND_KEYS
+        assert chosen["lists"]["stale"]["keys"] == LOOKUP_KEYS
+        assert routing["affected"]["count"] == 10
+
+    def test_a_changed_signature_with_a_stale_failure_holds_both(
+        self, user, workspace, storage
+    ):
+        environment, pairing = self._stale_gap(
+            user,
+            workspace,
+            storage,
+            "gap-cases-stale-failed",
+            actions=[
+                {"action": LOOKUP, "status": "failed", "reason": "500"},
+                {"action": REFUND, "status": "passed", "reason": ""},
+            ],
+        )
+
+        report = _select(environment, pairing=pairing)
+        routing = _rows(report)["tool_routing"]
+
+        assert routing["status"] == "blocked"
+        assert {one["name"] for one in routing["targets"]} == {REFUND, LOOKUP}
+        assert routing["stale_because"] == "agent_version"
+        assert set(report["selection"]["lists"]["blocked"]["keys"]) == set(
+            REFUND_KEYS + LOOKUP_KEYS
+        )
 
     def test_an_unread_version_holds_back_no_case(self, user, workspace, storage):
         environment, pairing = self._a2(
@@ -960,3 +1212,39 @@ def test_another_agent_s_tool_gap_keeps_the_production_only_tool_held(
     assert set(report["selection"]["lists"]["blocked"]["keys"]) == set(
         REFUND_KEYS + LOOKUP_KEYS
     )
+
+
+@pytest.mark.parametrize(
+    "stale_because, blocked_by, expected",
+    [
+        (None, None, "supported"),
+        ("agent_version", None, "stale"),
+        ("built_with_unknown", None, "untested"),
+        (None, "tool_discovery", "untested"),
+    ],
+)
+def test_a_case_beside_a_tool_row_s_targets_keeps_what_its_evidence_says(
+    stale_because, blocked_by, expected
+):
+    from simulate.services.harness_scenario_needs import CaseNeeds
+
+    row = {
+        "id": "tool_routing",
+        "status": "blocked",
+        "targets": [{"kind": "tool", "name": REFUND, "result": "failed"}],
+        "stale_because": stale_because,
+        "blocked_by": blocked_by,
+    }
+    lookup = CaseNeeds(
+        key="status-1",
+        number=1,
+        name="status-1",
+        persona="",
+        rows=frozenset({"tool_routing"}),
+        tools=frozenset({LOOKUP}),
+        unknown=False,
+        recorded=False,
+        grading_gap=None,
+    )
+
+    assert selection._status_for(row, lookup) == expected
