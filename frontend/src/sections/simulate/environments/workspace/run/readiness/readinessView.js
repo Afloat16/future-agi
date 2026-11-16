@@ -119,6 +119,8 @@ export function readinessView(report) {
     open,
     // Each blocked row, then each worker, holding selected cases back, with the label the server gives it.
     heldBy: selection.held_by,
+    // The first area holding cases back, chosen by the server; null when no area does.
+    blockingArea: selection.blocking_area,
     // The server sends fix_groups only once it supports fixes.
     grouped: Boolean(report?.fix_groups),
     fixMessage: report?.fix_groups?.builder?.message ?? null,

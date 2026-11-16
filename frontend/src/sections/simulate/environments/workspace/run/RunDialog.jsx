@@ -334,10 +334,8 @@ export default function RunDialog({
   const held = readiness?.summary;
   const heldBack = held?.blocked > 0;
   const allHeld = heldBack && held.blocked >= held.requested;
-  const blockingArea = readiness?.open.find(
-    (line) => line.status === "blocked",
-  )?.area;
-  const blockingLabel = READY_TO_RUN_COPY.areas[blockingArea];
+  // The area holding cases back, as the server picks it.
+  const blockingLabel = READY_TO_RUN_COPY.areas[readiness?.blockingArea];
   // Why each held-back case waits, in the server's words.
   const heldReasons = heldBack
     ? readiness.heldBy.map((row) => ({
@@ -772,55 +770,58 @@ export default function RunDialog({
         placement="left"
         title={toggleLabel}
       >
-        <IconButton
-          size="small"
-          aria-label={toggleLabel}
-          aria-expanded={!collapsed}
-          onClick={() => onCollapsedChange?.(!collapsed)}
-          // right: 100% puts its right edge on the paper's padding edge, so it
-          // covers the paper's 1px left border and the two read as one.
+        {/* right: 100% puts its right edge on the paper's padding edge, so it
+            covers the paper's 1px left border and the two read as one; the
+            button keeps the theme's small size. */}
+        <Box
           sx={{
             position: "absolute",
             top: "48px",
             right: "100%",
             zIndex: 1,
-            width: 28,
-            height: 28,
-            p: 0,
+            display: "flex",
+            overflow: "hidden",
             bgcolor: "background.paper",
             border: "1px solid",
             borderColor: "divider",
             borderRight: 0,
             borderRadius: "4px 0 0 4px",
-            "&:hover": { bgcolor: "background.default" },
           }}
         >
-          <Iconify
-            icon="solar:alt-arrow-right-linear"
-            width={16}
-            sx={{
-              color: "text.disabled",
-              transform: collapsed ? "rotate(180deg)" : "rotate(0deg)",
-              transition: "transform 200ms ease-in-out",
-            }}
-          />
-          {fixActive && collapsed && (
-            <Box
-              data-testid="run-plan-busy"
+          <IconButton
+            size="small"
+            aria-label={toggleLabel}
+            aria-expanded={!collapsed}
+            onClick={() => onCollapsedChange?.(!collapsed)}
+            sx={{ "&:hover": { bgcolor: "background.default" } }}
+          >
+            <Iconify
+              icon="solar:alt-arrow-right-linear"
+              width={16}
               sx={{
-                position: "absolute",
-                top: 2,
-                right: 2,
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                bgcolor: "status.info.solid",
-                border: "1.5px solid",
-                borderColor: "background.paper",
+                color: "text.disabled",
+                transform: collapsed ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 200ms ease-in-out",
               }}
             />
-          )}
-        </IconButton>
+            {fixActive && collapsed && (
+              <Box
+                data-testid="run-plan-busy"
+                sx={{
+                  position: "absolute",
+                  top: 2,
+                  right: 2,
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  bgcolor: "status.info.solid",
+                  border: "1.5px solid",
+                  borderColor: "background.paper",
+                }}
+              />
+            )}
+          </IconButton>
+        </Box>
       </CustomTooltip>
       {/* Hidden, not unmounted, while collapsed: picks, queries and a fix's
           polling carry on, and nothing hidden takes focus. Its width stays

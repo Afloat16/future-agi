@@ -80,6 +80,9 @@ vi.mock("../readiness/ReadyToRunSection", () => ({
 }));
 
 const { default: RunDialog } = await import("../RunDialog");
+const { READY_TO_RUN_COPY, RUN_PLAN_COPY } = await import(
+  "../readiness/readiness.constants"
+);
 
 const view = ({ requested = 10, blocked = 0, canRun = true } = {}) => ({
   grouped: true,
@@ -106,6 +109,7 @@ const view = ({ requested = 10, blocked = 0, canRun = true } = {}) => ({
   ready: [],
   grading: { notGradable: 0 },
   heldBy: [],
+  blockingArea: blocked ? "tool_binding" : null,
 });
 
 const dialog = () => (
@@ -213,6 +217,17 @@ describe("RunDialog with Ready to run", () => {
     expect(runButton()).toBeDisabled();
     expect(screen.getByTestId("run-all-held")).toHaveTextContent(
       "Every selected scenario waits on a fix: tools wired to the test world",
+    );
+  });
+
+  it("names the area the server says holds the cases back, not the first open line", () => {
+    state.view = {
+      ...view({ requested: 2, blocked: 2 }),
+      blockingArea: "reset",
+    };
+    renderDialog();
+    expect(screen.getByTestId("run-all-held")).toHaveTextContent(
+      RUN_PLAN_COPY.allHeld(READY_TO_RUN_COPY.areas.reset),
     );
   });
 
