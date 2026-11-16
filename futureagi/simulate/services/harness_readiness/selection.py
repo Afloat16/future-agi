@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal, TypedDict, cast
 from uuid import UUID
 
@@ -434,7 +434,7 @@ def _proof_views(pairing: Pairing, ready: bool):
             )
         )
     earlier.sort(
-        key=lambda one: one[0] or datetime.min.replace(tzinfo=timezone.utc),
+        key=lambda one: one[0] or datetime.min.replace(tzinfo=UTC),
         reverse=True,
     )
 
