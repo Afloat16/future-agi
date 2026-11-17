@@ -2,7 +2,11 @@ import { format } from "date-fns";
 import _ from "lodash";
 
 function isNumeric(value) {
-  return _.isFinite(_.toNumber(value));
+  return (
+    (typeof value === "number" ||
+      (typeof value === "string" && value.trim() !== "")) &&
+    _.isFinite(_.toNumber(value))
+  );
 }
 
 function isValidDate(value) {
@@ -27,14 +31,12 @@ export const validateDatasetFilter = (acc, currVal) => {
     if (
       ["between", "notBetween"].includes(operator) &&
       Array.isArray(currVal?.value) &&
-      currVal?.value?.[0]?.length &&
-      currVal?.value?.[1]?.length &&
       isNumeric(currVal?.value?.[0]) &&
       isNumeric(currVal?.value?.[1])
     ) {
       acc.push({
         ...rest,
-        value: rest?.value?.map((v) => parseFloat(v)),
+        value: rest?.value?.map(_.toNumber),
       });
       return acc;
     }
@@ -42,10 +44,9 @@ export const validateDatasetFilter = (acc, currVal) => {
     if (
       !["between", "notBetween"].includes(operator) &&
       Array.isArray(currVal?.value) &&
-      currVal?.value?.[0]?.length &&
       isNumeric(currVal?.value?.[0])
     ) {
-      acc.push({ ...rest, value: [parseFloat(rest?.value?.[0])] });
+      acc.push({ ...rest, value: [_.toNumber(rest?.value?.[0])] });
       return acc;
     }
   }
