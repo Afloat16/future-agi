@@ -1,17 +1,18 @@
 import random
 import string
 from datetime import UTC, datetime
+from uuid import uuid4
 
 
 def generate_unique_dataset_name(prefix="Dataset-", separator="-"):
-    """Generates a unique name using the current timestamp with separators for readability.
+    """Generates a timestamped name with a UUID suffix for concurrent batches.
 
     Args:
         prefix (str): Optional. A prefix for the generated name.
         separator (str): The separator to use between date and time components.
 
     Returns:
-        str: A unique name based on the current timestamp
+        str: A timestamped name with an independent UUID suffix
     """
     # Get the current datetime with desired precision
     current_time = datetime.now()
@@ -20,7 +21,7 @@ def generate_unique_dataset_name(prefix="Dataset-", separator="-"):
         f"%Y{separator}%m{separator}%d{separator}%H{separator}%M{separator}%S"
     )
     # Combine the prefix and the formatted time string to create a unique name
-    return prefix + time_str
+    return prefix + time_str + separator + uuid4().hex
 
 
 def generate_eval_display_name(eval_display_name: str) -> str:
