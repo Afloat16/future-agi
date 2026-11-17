@@ -61,7 +61,7 @@ class FiApiService:
             inferences = response.json()["data"]["inferences"]
             return [FiInference(**x) for x in inferences]
         except Exception as e:
-            logger.error("Exception fetching inferences", e)
+            logger.error("Exception fetching inferences", error=str(e))
             return []
 
     @staticmethod
@@ -119,7 +119,7 @@ class FiApiService:
         except Exception as e:
             logger.error(
                 "An error occurred while posting eval results",
-                str(e),
+                error=str(e),
             )
             raise
 
@@ -246,7 +246,7 @@ class FiApiService:
         except Exception as e:
             logger.error(
                 "An error occurred while creating eval request",
-                str(e),
+                error=str(e),
             )
             raise
 
@@ -291,7 +291,7 @@ class FiApiService:
         except Exception as e:
             logger.error(
                 "An error occurred while posting eval performance report",
-                str(e),
+                error=str(e),
             )
             raise
 
@@ -334,7 +334,7 @@ class FiApiService:
         except Exception as e:
             logger.error(
                 "An error occurred while posting experiment metadata",
-                str(e),
+                error=str(e),
             )
             raise
 
