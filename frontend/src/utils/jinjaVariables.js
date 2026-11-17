@@ -57,8 +57,9 @@ function _walk(node, declared, used) {
       if (!declared.has(node.value)) used.add(node.value);
       return;
     case "LookupVal":
-      // obj.field or obj["key"] — only the root (obj) matters
+      // Computed keys can reference inputs; literal property names cannot.
       _walk(node.target, declared, used);
+      _walk(node.val, declared, used);
       return;
     case "Filter":
       // {{ expr | filtername }} — walk the expression, skip the filter name
