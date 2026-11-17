@@ -160,6 +160,19 @@ def test_is_html_rejects_mismatched_close(is_html):
     assert is_html(None, "<b></i></b>", None, None, text="<b></i></b>")["score"] == 0.0
 
 
+@pytest.mark.parametrize(
+    "tag",
+    "area base br col embed hr img input link meta param source track wbr".split(),
+)
+@pytest.mark.parametrize("nested", [False, True])
+def test_is_html_accepts_self_closing_void_tags(is_html, tag, nested):
+    markup = f"<{tag} />"
+    if nested:
+        markup = f"<div>{markup}</div>"
+    assert is_html(None, markup, None, None)["score"] == 1.0
+    assert is_html(None, markup + "</unexpected>", None, None)["score"] == 0.0
+
+
 # ---------------------------------------------------------------------------
 # is_sql
 # ---------------------------------------------------------------------------

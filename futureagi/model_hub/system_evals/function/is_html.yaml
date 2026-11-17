@@ -31,6 +31,8 @@ config:
                 self.errors = []
                 self.stack = []
                 self.has_tags = False
+            def handle_startendtag(self, tag, attrs):
+                self.has_tags = True
             def handle_starttag(self, tag, attrs):
                 self.has_tags = True
                 void = {"area","base","br","col","embed","hr","img","input","link","meta","param","source","track","wbr"}
