@@ -423,7 +423,7 @@ class ModelServingClient:
         endpoint = f"{self.base_url}/model/v1/infer/{model_provider}"
 
         # ✅ IMPROVED: Pass model name correctly based on provider
-        params = model_params or {}
+        params = dict(model_params or {})
         params["model"] = model_name
 
         request_body: dict[str, Any] = {
