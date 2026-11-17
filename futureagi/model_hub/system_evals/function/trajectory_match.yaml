@@ -71,11 +71,12 @@ config:
             s = common / max(len(exp), len(actual))
             return {"score": float(s), "reason": f"Strict: {common}/{len(exp)} prefix match"}
         elif mode == "unordered":
-            a_set, e_set = set(actual), set(exp)
-            inter = a_set & e_set
-            union = a_set | e_set
-            s = len(inter) / len(union) if union else 1.0
-            return {"score": float(s), "reason": f"Unordered: {len(inter)}/{len(union)}"}
+            from collections import Counter
+            a_counts, e_counts = Counter(actual), Counter(exp)
+            inter = sum((a_counts & e_counts).values())
+            union = sum((a_counts | e_counts).values())
+            s = inter / union if union else 1.0
+            return {"score": float(s), "reason": f"Unordered: {inter}/{union}"}
         elif mode == "subset":
             e_set, a_set = set(exp), set(actual)
             if e_set.issubset(a_set):

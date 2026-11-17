@@ -94,6 +94,22 @@ def test_log_loss_empty():
     assert r["score"] == 1.0
 
 
+@pytest.mark.parametrize(
+    "actual,expected,score",
+    [
+        (["a"], ["a", "a"], 0.5),
+        (["a", "a"], ["a"], 0.5),
+        (["a", "a", "b"], ["a", "b", "b"], 0.5),
+        ([{"name": "a"}], [{"name": "a"}, {"name": "a"}], 0.5),
+        (["b", "a", "a"], ["a", "b", "a"], 1.0),
+    ],
+)
+def test_unordered_trajectory_preserves_action_counts(actual, expected, score):
+    ev = _load_eval("trajectory_match")
+    result = ev(None, actual, expected, None, mode="unordered")
+    assert result["score"] == score
+
+
 # ---------------------------------------------------------------------------
 # is_email
 # ---------------------------------------------------------------------------

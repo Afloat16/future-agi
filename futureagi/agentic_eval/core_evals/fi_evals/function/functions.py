@@ -3486,12 +3486,12 @@ def trajectory_match(output, expected, mode="strict", **kwargs):
         return {"result": score, "reason": f"Trajectory strict: {common}/{len(exp)} prefix match, score={score:.4f}"}
 
     elif mode == "unordered":
-        actual_set = set(actual)
-        exp_set = set(exp)
-        intersection = actual_set & exp_set
-        union = actual_set | exp_set
-        score = len(intersection) / len(union) if union else 1.0
-        return {"result": score, "reason": f"Trajectory unordered: {len(intersection)}/{len(union)} matched"}
+        from collections import Counter
+        actual_counts, exp_counts = Counter(actual), Counter(exp)
+        intersection = sum((actual_counts & exp_counts).values())
+        union = sum((actual_counts | exp_counts).values())
+        score = intersection / union if union else 1.0
+        return {"result": score, "reason": f"Trajectory unordered: {intersection}/{union} matched"}
 
     elif mode == "subset":
         exp_set = set(exp)
