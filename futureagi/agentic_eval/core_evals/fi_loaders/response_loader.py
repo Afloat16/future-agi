@@ -40,6 +40,7 @@ class ResponseLoader(BaseLoader):
         Raises:
             KeyError: If mandatory columns (response) are missing in the raw dataset.
         """
+        self._processed_dataset = []
         for raw_instance in self._raw_dataset:
             # Check for mandatory columns in raw_instance
             if self.col_response not in raw_instance:
@@ -83,6 +84,7 @@ class ResponseLoader(BaseLoader):
         self._raw_dataset = FiApiService.fetch_inferences(
             filters=filters, limit=limit if limit is not None else 100
         )
+        self._processed_dataset = []
         for raw_dataset in self._raw_dataset:
             raw_dataset_dict = asdict(raw_dataset)
             processed_instance = {

@@ -36,6 +36,7 @@ class JsonLoader(BaseLoader):
         Raises:
             KeyError: If mandatory columns (response) are missing in the raw dataset.
         """
+        self._processed_dataset = []
         for raw_instance in self._raw_dataset:
             # Check for mandatory columns in raw_instance
             if self.col_actual_json not in raw_instance:

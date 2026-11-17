@@ -44,6 +44,7 @@ class SummaryLoader(BaseLoader):
         Raises:
             KeyError: If mandatory columns (document or response) are missing in the raw dataset.
         """
+        self._processed_dataset = []
         for raw_instance in self._raw_dataset:
             # Check for mandatory columns in raw_instance
             if self.col_document not in raw_instance:
@@ -70,6 +71,7 @@ class SummaryLoader(BaseLoader):
         By default, this will fetch the last 10 inferences from the API.
         """
         self._raw_dataset = FiApiService.fetch_inferences(filters=filters, limit=limit)
+        self._processed_dataset = []
         for raw_dataset in self._raw_dataset:
             raw_dataset_dict = asdict(raw_dataset)
             processed_instance = {

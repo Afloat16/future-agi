@@ -49,6 +49,7 @@ class Loader(BaseLoader):
         """
         Transforms the raw data into a structured format. Processes each entry from the raw dataset, and extracts attributes.
         """
+        self._processed_dataset = []
         for raw_instance in self._raw_dataset:
             if self.col_query in raw_instance and not isinstance(
                 raw_instance.get(self.col_query), str
@@ -94,6 +95,7 @@ class Loader(BaseLoader):
         By default, this will fetch the last 10 inferences from the API.
         """
         self._raw_dataset = FiApiService.fetch_inferences(filters=filters, limit=limit)
+        self._processed_dataset = []
         for raw_dataset in self._raw_dataset:
             raw_dataset_dict = asdict(raw_dataset)
 
