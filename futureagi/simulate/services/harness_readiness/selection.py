@@ -65,6 +65,7 @@ from simulate.services.harness_scenario_needs import (
 )
 from simulate.services.harness_versioning import validation
 from simulate.services.hosted_harness import HostedHarnessError
+from simulate.types import ProofFailure, ProofState
 
 Bucket = Literal["eligible", "blocked", "stale", "untested"]
 BUCKETS: tuple[Bucket, ...] = ("eligible", "blocked", "stale", "untested")
@@ -308,17 +309,9 @@ def selection_report(
     }
 
 
-ProofState = Literal["proved", "failed", "not_proved"]
-
-
 class LastProved(TypedDict):
     environment_version: int | None
     suite_version: int | None
-
-
-# Why a scenario's proof on these versions failed: it held on an earlier environment or scenarios version, or it
-# never held.
-ProofFailure = Literal["environment_changed", "scenarios_changed", "did_not_hold"]
 
 
 class ProofView(TypedDict):

@@ -31,11 +31,7 @@ from simulate.serializers.requests.run_test_evals import (
     EvalConfigUpdateRequestSerializer,
 )
 from simulate.serializers.response.run_test import RunVersionLabelSerializer
-from simulate.services.harness_readiness.selection import (
-    BUCKETS,
-    ProofFailure,
-    ProofState,
-)
+from simulate.types import ProofFailure, ProofState
 from tfc.utils.api_serializers import StrictInputSerializer
 
 
@@ -959,6 +955,9 @@ class HarnessScenarioCoverageSerializer(serializers.Serializer):
     overlay_intensity = serializers.CharField(required=False, allow_null=True)
 
 
+_BUCKETS = ("eligible", "blocked", "stale", "untested")
+
+
 class HarnessScenarioLastProvedSerializer(serializers.Serializer):
     environment_version = serializers.IntegerField(allow_null=True)
     suite_version = serializers.IntegerField(allow_null=True)
@@ -984,7 +983,7 @@ class HarnessScenarioReadinessSerializer(serializers.Serializer):
     """One scenario's readiness for the pairing the list was asked for."""
 
     bucket = serializers.ChoiceField(
-        choices=BUCKETS, allow_null=True, help_text="Null for a dropped scenario."
+        choices=_BUCKETS, allow_null=True, help_text="Null for a dropped scenario."
     )
     by = serializers.ListField(
         child=serializers.CharField(),
@@ -1653,7 +1652,6 @@ class HarnessCapabilityReportSerializer(serializers.Serializer):
     computed_at = serializers.CharField()
 
 
-_BUCKETS = ("eligible", "blocked", "stale", "untested")
 _CAPABILITY_ROWS = (
     "start",
     "message",
