@@ -318,8 +318,8 @@ class ModelServingClient:
         elif isinstance(image, Image.Image):
             # Convert PIL Image to base64
             buffer = io.BytesIO()
-            # Use format from image if available, otherwise default to JPEG
-            format_name = getattr(image, "format", "JPEG") or "JPEG"
+            # PNG preserves pixels and supports generated alpha/palette images.
+            format_name = getattr(image, "format", None) or "PNG"
             image.save(buffer, format=format_name)
             image_data = base64.b64encode(buffer.getvalue()).decode("utf-8")
             return f"data:image/{format_name.lower()};base64,{image_data}"
