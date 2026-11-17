@@ -2224,7 +2224,7 @@ def calculate_hamming_similarity(output, expected, case_insensitive=True, **kwar
     """
     Compute Hamming similarity between two strings.
     Counts matching character positions, normalized by the longer string.
-    Pads shorter string with nulls for unequal lengths.
+    Counts unmatched tail characters as mismatches for unequal lengths.
 
     Args:
         output (str): The generated text.
@@ -2244,10 +2244,7 @@ def calculate_hamming_similarity(output, expected, case_insensitive=True, **kwar
         return {"result": 1.0, "reason": "Hamming: 1.0 (both empty)"}
 
     max_len = max(len(s1), len(s2))
-    s1_padded = s1.ljust(max_len, '\0')
-    s2_padded = s2.ljust(max_len, '\0')
-
-    mismatches = sum(c1 != c2 for c1, c2 in zip(s1_padded, s2_padded))
+    mismatches = abs(len(s1) - len(s2)) + sum(c1 != c2 for c1, c2 in zip(s1, s2, strict=False))
     similarity = 1.0 - (mismatches / max_len)
     return {"result": similarity, "reason": f"Hamming: {similarity:.4f} ({mismatches} mismatches out of {max_len} chars)"}
 

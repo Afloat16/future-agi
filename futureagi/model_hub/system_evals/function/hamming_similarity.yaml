@@ -1,7 +1,7 @@
 eval_id: 146
 name: hamming_similarity
 description: Computes Hamming similarity between two strings. Counts matching character positions normalized by the longer string
-  length. Pads the shorter string for unequal lengths.
+  length. Counts unmatched tail characters as mismatches for unequal lengths.
 criteria: Measures character-level positional similarity between two strings.
 eval_tags:
 - NLP Metrics
@@ -37,8 +37,6 @@ config:
         if not s1 and not s2:
             return {"score": 1.0, "reason": "Hamming: 1.0 (both empty)"}
         max_len = max(len(s1), len(s2))
-        s1p = s1.ljust(max_len, '\0')
-        s2p = s2.ljust(max_len, '\0')
-        mismatches = sum(c1 != c2 for c1, c2 in zip(s1p, s2p))
+        mismatches = abs(len(s1) - len(s2)) + sum(c1 != c2 for c1, c2 in zip(s1, s2, strict=False))
         similarity = 1.0 - (mismatches / max_len)
         return {"score": float(similarity), "reason": f"Hamming: {similarity:.4f} ({mismatches} mismatches / {max_len} chars)"}
