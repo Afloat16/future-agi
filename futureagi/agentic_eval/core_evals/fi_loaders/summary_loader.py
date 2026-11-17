@@ -68,12 +68,16 @@ class SummaryLoader(BaseLoader):
         """
         Load data from Fi API.
         By default, this will fetch the last 10 inferences from the API.
+        When context_key is supplied, use that context field as the document.
         """
         self._raw_dataset = FiApiService.fetch_inferences(filters=filters, limit=limit)
         for raw_dataset in self._raw_dataset:
             raw_dataset_dict = asdict(raw_dataset)
+            document = raw_dataset_dict["context"]
+            if context_key is not None and document is not None:
+                document = document.get(context_key)
             processed_instance = {
-                "document": raw_dataset_dict["context"],
+                "document": document,
                 "response": raw_dataset_dict["prompt_response"],
             }
             self._processed_dataset.append(processed_instance)
