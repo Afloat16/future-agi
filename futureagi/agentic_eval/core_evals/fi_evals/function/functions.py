@@ -3634,6 +3634,10 @@ def calculate_pearson_correlation(output, expected, **kwargs):
     y = _parse_number_list(expected)
     if len(x) != len(y) or len(x) < 2:
         return {"result": 0.0, "reason": f"Invalid input: {len(x)} vs {len(y)} values (need >=2)"}
+    x_scale = max(abs(value) for value in x) or 1.0
+    y_scale = max(abs(value) for value in y) or 1.0
+    x = [value / x_scale for value in x]
+    y = [value / y_scale for value in y]
     n = len(x)
     mx, my = sum(x) / n, sum(y) / n
     ss_x = sum((xi - mx) ** 2 for xi in x)

@@ -94,6 +94,18 @@ def test_log_loss_empty():
     assert r["score"] == 1.0
 
 
+@pytest.mark.parametrize("x_scale", [1e-200, 1.0, 1e200])
+@pytest.mark.parametrize("y_scale", [1e-200, 1.0, 1e200])
+def test_pearson_correlation_is_scale_invariant(x_scale, y_scale):
+    ev = _load_eval("pearson_correlation")
+    x = [value * x_scale for value in [-3, -1, 1, 3]]
+    y = [value * y_scale for value in [-2, 4, 0, 3]]
+    expected_score = (11 / 455**0.5 + 1) / 2
+    assert ev(None, x, y, None)["score"] == pytest.approx(expected_score)
+    assert ev(None, x, x, None)["score"] == pytest.approx(1.0)
+    assert ev(None, x, [-value for value in x], None)["score"] == pytest.approx(0.0)
+
+
 # ---------------------------------------------------------------------------
 # is_email
 # ---------------------------------------------------------------------------
