@@ -31,6 +31,7 @@ from simulate.serializers.requests.run_test_evals import (
     EvalConfigUpdateRequestSerializer,
 )
 from simulate.serializers.response.run_test import RunVersionLabelSerializer
+from simulate.services.harness_scenarios import FIELDS as SCENARIO_FILTER_FIELDS
 from simulate.types import ProofFailure, ProofState
 from tfc.utils.api_serializers import StrictInputSerializer
 
@@ -1003,6 +1004,25 @@ class HarnessScenarioReadinessSerializer(serializers.Serializer):
 
 
 class HarnessScenarioListQuerySerializer(serializers.Serializer):
+    """The Scenarios list query: paging, search, grouping, ordering, the filter panel and readiness."""
+
+    page = serializers.IntegerField(required=False, min_value=1)
+    limit = serializers.IntegerField(required=False, min_value=1)
+    search = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Every word must match the name, instruction, use case or branch.",
+    )
+    ordering = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="number, name or use_case, with a leading - for descending; the suite order otherwise.",
+    )
+    group_by = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="One of the response's groupings; empty for one flat list, use case when absent.",
+    )
     readiness = serializers.BooleanField(
         required=False,
         default=False,
@@ -1020,6 +1040,21 @@ class HarnessScenarioListQuerySerializer(serializers.Serializer):
         required=False,
         help_text="With readiness; the environment's default when absent.",
     )
+
+    def get_fields(self):
+        fields = super().get_fields()
+        # Each filter panel property, repeated to OR its values, and its `_not` twin to exclude them.
+        for one in SCENARIO_FILTER_FIELDS:
+            for key in (one["value"], f"{one['value']}_not"):
+                # A dotted key would otherwise nest in the validated data.
+                flat = {"source": key.replace(".", "__")} if "." in key else {}
+                fields[key] = serializers.ListField(
+                    child=serializers.CharField(allow_blank=True),
+                    required=False,
+                    help_text=f"Filter on {one['label']}.",
+                    **flat,
+                )
+        return fields
 
 
 class HarnessScenarioRowSerializer(serializers.Serializer):

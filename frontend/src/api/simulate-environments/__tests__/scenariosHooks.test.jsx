@@ -108,7 +108,7 @@ describe("useHarnessScenarios", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(listScenarios).toHaveBeenLastCalledWith(
       "job-1",
-      expect.objectContaining({ readiness: 1 }),
+      expect.objectContaining({ readiness: true }),
     );
 
     listScenarios.mockClear();

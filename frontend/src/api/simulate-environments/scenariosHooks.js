@@ -75,7 +75,7 @@ export function useHarnessScenarios({
         group_by: groupBy,
         ordering,
         ...filters,
-        ...(readiness ? { readiness: 1 } : {}),
+        ...(readiness ? { readiness: true } : {}),
       }),
     select: toPage,
     placeholderData: keepPreviousData,

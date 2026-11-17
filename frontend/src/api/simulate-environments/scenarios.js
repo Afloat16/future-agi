@@ -16,12 +16,10 @@ const sampleEmulator = () => import("./_fixtures/scenariosFixtures");
  * The scenarios resource for one harness job — list, coverage and amend.
  * `env.id` is the job id, and the workspace passes it as `jobId`.
  *
- * These call the real endpoints. Their params (page, limit, search, group_by,
- * ordering, object-style filters) are read by hand server-side and are not yet
- * in the generated Swagger surface, so `apiPath()` for these routes THROWS
- * until the backend lands them and `yarn contracts:generate` adds them to the
- * surface — the sanctioned "write it in final form now, it starts working when
- * the surface includes it" pattern (see harnessEnvironments.js).
+ * These call the real endpoints. The list's params (page, limit, search,
+ * group_by, ordering, readiness and the object-style filters, each with its
+ * `_not` twin) are declared by the list's query serializer, so the strict
+ * request contract accepts them.
  */
 
 const scenariosPath = (jobId) =>
