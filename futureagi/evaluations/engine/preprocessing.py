@@ -81,8 +81,8 @@ def _fetch_url_bytes(url):
 def _resolve_image_input(value):
     """Bare-base64 form for sandbox eval bodies that do ``base64.b64decode(text)``.
 
-    Pass-through for None, existing file paths, and strings the sandbox can
-    already handle (already-base64, data URIs). For ``http(s)://`` URLs,
+    Pass-through for None, existing file paths, and bare base64. Extract the
+    payload from base64 data URIs. For ``http(s)://`` URLs,
     fetch via :func:`_fetch_url_bytes` and return as plain base64.
 
     Any fetch failure returns the original value untouched so the eval
@@ -92,6 +92,9 @@ def _resolve_image_input(value):
         return value
     stripped = value.strip()
     if not stripped or stripped.startswith("data:"):
+        header, separator, payload = stripped.partition(",")
+        if separator and header.endswith(";base64"):
+            return payload
         return stripped if stripped.startswith("data:") else value
     if not stripped.startswith(("http://", "https://")):
         return value

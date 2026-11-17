@@ -2,7 +2,7 @@
 Tests for image-input preprocessors registered in evaluations.engine.preprocessing.
 
 Pins three behaviors:
-  - Passthrough: None / empty / data-URI / base64 / file path are not touched.
+  - Passthrough: None / empty / base64 / file path are not touched.
   - SSRF guard: private / loopback / metadata hosts return the original URL
     untouched (sandbox handles the error gracefully). The guard itself
     (IP-pinning, redirect re-validation) is exercised via `_safe_get`
@@ -51,7 +51,8 @@ def test_image_preprocessors_registered():
         "",
         "   ",
         "aGVsbG8=",
-        "data:image/png;base64,iVBORw0KGgo...",
+        "data:image/png,unencoded",
+        "data:image/png;base64",
         "/tmp/img.png",
         42,
         b"bytes",
@@ -62,6 +63,31 @@ def test_resolver_does_not_touch_non_url_inputs(value):
         out = _resolve_image_input(value)
         mock_get.assert_not_called()
         assert out == value
+
+
+@pytest.mark.parametrize("name", ["image_properties", "psnr", "ssim"])
+@pytest.mark.parametrize("image_format", ["PNG", "JPEG"])
+def test_data_uri_runs_image_eval(name, image_format):
+    from io import BytesIO
+
+    from PIL import Image
+
+    from model_hub.system_evals.tests.test_validators import _load_eval
+
+    image = BytesIO()
+    Image.new("RGB", (3, 2), "blue").save(image, format=image_format)
+    payload = base64.b64encode(image.getvalue()).decode("ascii")
+    uri = f"data:image/{image_format.lower()};base64,{payload}"
+    inputs = {"text": uri, "output": uri, "expected": uri}
+    resolved = preprocess_inputs(name, inputs)
+    evaluate = _load_eval(name)
+    if name == "image_properties":
+        result = evaluate(
+            None, None, None, None, text=resolved["text"], expected_width=3
+        )
+    else:
+        result = evaluate(None, resolved["output"], resolved["expected"], None)
+    assert result["score"] == 1.0, result
 
 
 # ---------------------------------------------------------------------------
