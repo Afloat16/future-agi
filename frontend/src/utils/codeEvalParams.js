@@ -9,8 +9,22 @@ const splitTopLevelCommas = (raw) => {
   const parts = [];
   let depth = 0;
   let buf = "";
+  let quote = "";
+  let escaped = false;
   for (let i = 0; i < raw.length; i += 1) {
     const ch = raw[i];
+    if (quote) {
+      buf += ch;
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      quote = ch;
+      buf += ch;
+      continue;
+    }
     if (ch === "(" || ch === "[" || ch === "{") depth += 1;
     else if (ch === ")" || ch === "]" || ch === "}") depth -= 1;
     if (ch === "," && depth === 0) {
