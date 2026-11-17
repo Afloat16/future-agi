@@ -79,6 +79,10 @@ def get_prompt_tokens_openai_chat_completion(
     if language_model_id in OPENAI_MODEL_ENCODINGS:
         tokens_per_message = 3
         tokens_per_name = 1
+    elif language_model_id.startswith("gpt-4o-"):
+        return get_prompt_tokens_openai_chat_completion(
+            prompt=prompt, language_model_id="gpt-4o"
+        )
     elif "gpt-3.5-turbo" in language_model_id:
         return get_prompt_tokens_openai_chat_completion(
             prompt=prompt, language_model_id="gpt-3.5-turbo-0613"
@@ -116,13 +120,12 @@ def get_completion_tokens_openai_chat_completion(response: str, language_model_i
     if response is None:
         raise ValueError("response is None")
     try:
-        if language_model_id in {
-            "gpt-3.5-turbo-0613",
-            "gpt-3.5-turbo-16k-0613",
-            "gpt-4-0613",
-            "gpt-4-32k-0613",
-        }:
+        if language_model_id in OPENAI_MODEL_ENCODINGS:
             encoding = tiktoken.get_encoding(OPENAI_MODEL_ENCODINGS[language_model_id])
+        elif language_model_id.startswith("gpt-4o-"):
+            return get_completion_tokens_openai_chat_completion(
+                response=response, language_model_id="gpt-4o"
+            )
         elif "gpt-3.5-turbo" in language_model_id:
             return get_completion_tokens_openai_chat_completion(
                 response=response, language_model_id="gpt-3.5-turbo-0613"
