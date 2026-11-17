@@ -44114,6 +44114,26 @@ export type SimulateApiHarnessJobsSourceUploadBody = {
 
 export type SimulateApiHarnessJobsScenariosParams = {
   /**
+   * @minimum 1
+   */
+  page?: number;
+  /**
+   * @minimum 1
+   */
+  limit?: number;
+  /**
+   * Every word must match the name, instruction, use case or branch.
+   */
+  search?: string;
+  /**
+   * number, name or use_case, with a leading - for descending; the suite order otherwise.
+   */
+  ordering?: string;
+  /**
+   * One of the response's groupings; empty for one flat list, use case when absent.
+   */
+  group_by?: string;
+  /**
    * Add each scenario's readiness for the pairing the version ids name.
    */
   readiness?: boolean;
@@ -44129,6 +44149,158 @@ export type SimulateApiHarnessJobsScenariosParams = {
    * With readiness; the environment's default when absent.
    */
   suite_version_id?: string;
+  /**
+   * Filter on Scenario.
+   */
+  name?: string[];
+  /**
+   * Filter on Scenario.
+   */
+  name_not?: string[];
+  /**
+   * Filter on Use case.
+   */
+  use_case?: string[];
+  /**
+   * Filter on Use case.
+   */
+  use_case_not?: string[];
+  /**
+   * Filter on Situation.
+   */
+  instruction?: string[];
+  /**
+   * Filter on Situation.
+   */
+  instruction_not?: string[];
+  /**
+   * Filter on Name.
+   */
+  "persona.name"?: string[];
+  /**
+   * Filter on Name.
+   */
+  "persona.name_not"?: string[];
+  /**
+   * Filter on Accent.
+   */
+  "persona.accent"?: string[];
+  /**
+   * Filter on Accent.
+   */
+  "persona.accent_not"?: string[];
+  /**
+   * Filter on Language.
+   */
+  "persona.languages"?: string[];
+  /**
+   * Filter on Language.
+   */
+  "persona.languages_not"?: string[];
+  /**
+   * Filter on Age.
+   */
+  "persona.age_group"?: string[];
+  /**
+   * Filter on Age.
+   */
+  "persona.age_group_not"?: string[];
+  /**
+   * Filter on Gender.
+   */
+  "persona.gender"?: string[];
+  /**
+   * Filter on Gender.
+   */
+  "persona.gender_not"?: string[];
+  /**
+   * Filter on Location.
+   */
+  "persona.location"?: string[];
+  /**
+   * Filter on Location.
+   */
+  "persona.location_not"?: string[];
+  /**
+   * Filter on Personality.
+   */
+  "persona.personality"?: string[];
+  /**
+   * Filter on Personality.
+   */
+  "persona.personality_not"?: string[];
+  /**
+   * Filter on Style.
+   */
+  "persona.communication_style"?: string[];
+  /**
+   * Filter on Style.
+   */
+  "persona.communication_style_not"?: string[];
+  /**
+   * Filter on Background.
+   */
+  background_noise?: string[];
+  /**
+   * Filter on Background.
+   */
+  background_noise_not?: string[];
+  /**
+   * Filter on Actors.
+   */
+  actors?: string[];
+  /**
+   * Filter on Actors.
+   */
+  actors_not?: string[];
+  /**
+   * Filter on Attack.
+   */
+  "coverage.overlay"?: string[];
+  /**
+   * Filter on Attack.
+   */
+  "coverage.overlay_not"?: string[];
+  /**
+   * Filter on Attack intensity.
+   */
+  "coverage.overlay_intensity"?: string[];
+  /**
+   * Filter on Attack intensity.
+   */
+  "coverage.overlay_intensity_not"?: string[];
+  /**
+   * Filter on Task.
+   */
+  "coverage.task"?: string[];
+  /**
+   * Filter on Task.
+   */
+  "coverage.task_not"?: string[];
+  /**
+   * Filter on Sub-goal.
+   */
+  sub_goals?: string[];
+  /**
+   * Filter on Sub-goal.
+   */
+  sub_goals_not?: string[];
+  /**
+   * Filter on Keywords.
+   */
+  keywords?: string[];
+  /**
+   * Filter on Keywords.
+   */
+  keywords_not?: string[];
+  /**
+   * Filter on Status.
+   */
+  status?: string[];
+  /**
+   * Filter on Status.
+   */
+  status_not?: string[];
 };
 
 export type SimulateApiHarnessConversationsCommandsParams = {

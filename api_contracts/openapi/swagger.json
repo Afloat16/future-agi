@@ -54455,6 +54455,41 @@
                 "description": "Validates the v1.6 request contract and delegates execution to the public backend selected by\n``settings.HARNESS_PROVIDER`` (``hosted`` or ``sandbox``). The hosted backend independently\nselects its managed sandbox runtime.",
                 "parameters": [
                     {
+                        "name": "page",
+                        "in": "query",
+                        "required": false,
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Every word must match the name, instruction, use case or branch.",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "name": "ordering",
+                        "in": "query",
+                        "description": "number, name or use_case, with a leading - for descending; the suite order otherwise.",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
+                        "name": "group_by",
+                        "in": "query",
+                        "description": "One of the response's groupings; empty for one flat list, use case when absent.",
+                        "required": false,
+                        "type": "string"
+                    },
+                    {
                         "name": "readiness",
                         "in": "query",
                         "description": "Add each scenario's readiness for the pairing the version ids name.",
@@ -54485,6 +54520,386 @@
                         "required": false,
                         "type": "string",
                         "format": "uuid"
+                    },
+                    {
+                        "name": "name",
+                        "in": "query",
+                        "description": "Filter on Scenario.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "name_not",
+                        "in": "query",
+                        "description": "Filter on Scenario.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "use_case",
+                        "in": "query",
+                        "description": "Filter on Use case.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "use_case_not",
+                        "in": "query",
+                        "description": "Filter on Use case.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "instruction",
+                        "in": "query",
+                        "description": "Filter on Situation.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "instruction_not",
+                        "in": "query",
+                        "description": "Filter on Situation.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.name",
+                        "in": "query",
+                        "description": "Filter on Name.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.name_not",
+                        "in": "query",
+                        "description": "Filter on Name.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.accent",
+                        "in": "query",
+                        "description": "Filter on Accent.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.accent_not",
+                        "in": "query",
+                        "description": "Filter on Accent.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.languages",
+                        "in": "query",
+                        "description": "Filter on Language.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.languages_not",
+                        "in": "query",
+                        "description": "Filter on Language.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.age_group",
+                        "in": "query",
+                        "description": "Filter on Age.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.age_group_not",
+                        "in": "query",
+                        "description": "Filter on Age.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.gender",
+                        "in": "query",
+                        "description": "Filter on Gender.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.gender_not",
+                        "in": "query",
+                        "description": "Filter on Gender.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.location",
+                        "in": "query",
+                        "description": "Filter on Location.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.location_not",
+                        "in": "query",
+                        "description": "Filter on Location.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.personality",
+                        "in": "query",
+                        "description": "Filter on Personality.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.personality_not",
+                        "in": "query",
+                        "description": "Filter on Personality.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.communication_style",
+                        "in": "query",
+                        "description": "Filter on Style.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "persona.communication_style_not",
+                        "in": "query",
+                        "description": "Filter on Style.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "background_noise",
+                        "in": "query",
+                        "description": "Filter on Background.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "background_noise_not",
+                        "in": "query",
+                        "description": "Filter on Background.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "actors",
+                        "in": "query",
+                        "description": "Filter on Actors.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "actors_not",
+                        "in": "query",
+                        "description": "Filter on Actors.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "coverage.overlay",
+                        "in": "query",
+                        "description": "Filter on Attack.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "coverage.overlay_not",
+                        "in": "query",
+                        "description": "Filter on Attack.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "coverage.overlay_intensity",
+                        "in": "query",
+                        "description": "Filter on Attack intensity.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "coverage.overlay_intensity_not",
+                        "in": "query",
+                        "description": "Filter on Attack intensity.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "coverage.task",
+                        "in": "query",
+                        "description": "Filter on Task.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "coverage.task_not",
+                        "in": "query",
+                        "description": "Filter on Task.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sub_goals",
+                        "in": "query",
+                        "description": "Filter on Sub-goal.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "sub_goals_not",
+                        "in": "query",
+                        "description": "Filter on Sub-goal.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "keywords",
+                        "in": "query",
+                        "description": "Filter on Keywords.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "keywords_not",
+                        "in": "query",
+                        "description": "Filter on Keywords.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "description": "Filter on Status.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "status_not",
+                        "in": "query",
+                        "description": "Filter on Status.",
+                        "required": false,
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
                     }
                 ],
                 "responses": {

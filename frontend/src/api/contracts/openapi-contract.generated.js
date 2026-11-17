@@ -30046,6 +30046,38 @@ export const OPENAPI_CONTRACT = Object.freeze({
         runtimeResponseValidation: true,
         requestBody: null,
         queryParameters: {
+          page: {
+            required: false,
+            schema: {
+              type: "integer",
+              minimum: 1,
+            },
+          },
+          limit: {
+            required: false,
+            schema: {
+              type: "integer",
+              minimum: 1,
+            },
+          },
+          search: {
+            required: false,
+            schema: {
+              type: "string",
+            },
+          },
+          ordering: {
+            required: false,
+            schema: {
+              type: "string",
+            },
+          },
+          group_by: {
+            required: false,
+            schema: {
+              type: "string",
+            },
+          },
           readiness: {
             required: false,
             schema: {
@@ -30072,6 +30104,348 @@ export const OPENAPI_CONTRACT = Object.freeze({
             schema: {
               type: "string",
               format: "uuid",
+            },
+          },
+          name: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          name_not: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          use_case: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          use_case_not: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          instruction: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          instruction_not: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.name": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.name_not": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.accent": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.accent_not": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.languages": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.languages_not": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.age_group": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.age_group_not": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.gender": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.gender_not": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.location": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.location_not": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.personality": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.personality_not": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.communication_style": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "persona.communication_style_not": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          background_noise: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          background_noise_not: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          actors: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          actors_not: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "coverage.overlay": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "coverage.overlay_not": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "coverage.overlay_intensity": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "coverage.overlay_intensity_not": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "coverage.task": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          "coverage.task_not": {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          sub_goals: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          sub_goals_not: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          keywords: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          keywords_not: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          status: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
+            },
+          },
+          status_not: {
+            required: false,
+            schema: {
+              type: "array",
+              items: {
+                type: "string",
+              },
             },
           },
         },

@@ -52181,6 +52181,26 @@ export const SimulateApiHarnessJobsScenariosParams = zod.object({
 export const simulateApiHarnessJobsScenariosQueryReadinessDefault = false;
 
 export const SimulateApiHarnessJobsScenariosQueryParams = zod.object({
+  page: zod.number().min(1).optional(),
+  limit: zod.number().min(1).optional(),
+  search: zod
+    .string()
+    .optional()
+    .describe(
+      "Every word must match the name, instruction, use case or branch.",
+    ),
+  ordering: zod
+    .string()
+    .optional()
+    .describe(
+      "number, name or use_case, with a leading - for descending; the suite order otherwise.",
+    ),
+  group_by: zod
+    .string()
+    .optional()
+    .describe(
+      "One of the response's groupings; empty for one flat list, use case when absent.",
+    ),
   readiness: zod
     .boolean()
     .default(simulateApiHarnessJobsScenariosQueryReadinessDefault)
@@ -52202,6 +52222,131 @@ export const SimulateApiHarnessJobsScenariosQueryParams = zod.object({
     .uuid()
     .optional()
     .describe("With readiness; the environment's default when absent."),
+  name: zod.array(zod.string()).optional().describe("Filter on Scenario."),
+  name_not: zod.array(zod.string()).optional().describe("Filter on Scenario."),
+  use_case: zod.array(zod.string()).optional().describe("Filter on Use case."),
+  use_case_not: zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Use case."),
+  instruction: zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Situation."),
+  instruction_not: zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Situation."),
+  "persona.name": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Name."),
+  "persona.name_not": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Name."),
+  "persona.accent": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Accent."),
+  "persona.accent_not": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Accent."),
+  "persona.languages": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Language."),
+  "persona.languages_not": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Language."),
+  "persona.age_group": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Age."),
+  "persona.age_group_not": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Age."),
+  "persona.gender": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Gender."),
+  "persona.gender_not": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Gender."),
+  "persona.location": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Location."),
+  "persona.location_not": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Location."),
+  "persona.personality": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Personality."),
+  "persona.personality_not": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Personality."),
+  "persona.communication_style": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Style."),
+  "persona.communication_style_not": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Style."),
+  background_noise: zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Background."),
+  background_noise_not: zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Background."),
+  actors: zod.array(zod.string()).optional().describe("Filter on Actors."),
+  actors_not: zod.array(zod.string()).optional().describe("Filter on Actors."),
+  "coverage.overlay": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Attack."),
+  "coverage.overlay_not": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Attack."),
+  "coverage.overlay_intensity": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Attack intensity."),
+  "coverage.overlay_intensity_not": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Attack intensity."),
+  "coverage.task": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Task."),
+  "coverage.task_not": zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Task."),
+  sub_goals: zod.array(zod.string()).optional().describe("Filter on Sub-goal."),
+  sub_goals_not: zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Sub-goal."),
+  keywords: zod.array(zod.string()).optional().describe("Filter on Keywords."),
+  keywords_not: zod
+    .array(zod.string())
+    .optional()
+    .describe("Filter on Keywords."),
+  status: zod.array(zod.string()).optional().describe("Filter on Status."),
+  status_not: zod.array(zod.string()).optional().describe("Filter on Status."),
 });
 
 export const SimulateApiHarnessJobsScenariosResponse = zod.object({
