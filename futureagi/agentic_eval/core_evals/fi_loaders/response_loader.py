@@ -44,15 +44,15 @@ class ResponseLoader(BaseLoader):
             # Check for mandatory columns in raw_instance
             if self.col_response not in raw_instance:
                 raise KeyError(f"'{self.col_response}' not found in provided data.")
-            if self.col_query in raw_instance and not isinstance(
+            if raw_instance.get(self.col_query) is not None and not isinstance(
                 raw_instance.get(self.col_query), str
             ):
                 raise TypeError(f"'{self.col_query}' is not of type string.")
-            if self.col_context in raw_instance and not isinstance(
+            if raw_instance.get(self.col_context) is not None and not isinstance(
                 raw_instance.get(self.col_context), str
             ):
                 raise TypeError(f"'{self.col_context}' is not of type string.")
-            if self.col_expected_response in raw_instance and not isinstance(
+            if raw_instance.get(self.col_expected_response) is not None and not isinstance(
                 raw_instance.get(self.col_expected_response), str
             ):
                 raise TypeError(
