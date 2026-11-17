@@ -23826,6 +23826,80 @@ export const HarnessScenarioRowApiDraftChange = {
   unchanged: "unchanged",
 } as const;
 
+/**
+ * Null for a dropped scenario.
+ */
+export type HarnessScenarioReadinessApiBucket =
+  (typeof HarnessScenarioReadinessApiBucket)[keyof typeof HarnessScenarioReadinessApiBucket];
+
+export const HarnessScenarioReadinessApiBucket = {
+  eligible: "eligible",
+  blocked: "blocked",
+  stale: "stale",
+  untested: "untested",
+} as const;
+
+export type HarnessScenarioProofApiState =
+  (typeof HarnessScenarioProofApiState)[keyof typeof HarnessScenarioProofApiState];
+
+export const HarnessScenarioProofApiState = {
+  proved: "proved",
+  failed: "failed",
+  not_proved: "not_proved",
+} as const;
+
+/**
+ * The latest versions it was proved on, when not proved on these.
+ */
+export interface HarnessScenarioLastProvedApi {
+  environment_version: number;
+  suite_version: number;
+}
+
+/**
+ * Why its proof failed, set only when state is failed: it held on an earlier environment or scenarios version, or it never held.
+ */
+export type HarnessScenarioProofApiReason =
+  (typeof HarnessScenarioProofApiReason)[keyof typeof HarnessScenarioProofApiReason];
+
+export const HarnessScenarioProofApiReason = {
+  environment_changed: "environment_changed",
+  scenarios_changed: "scenarios_changed",
+  did_not_hold: "did_not_hold",
+} as const;
+
+export interface HarnessScenarioProofApi {
+  state: HarnessScenarioProofApiState;
+  last_proved: HarnessScenarioLastProvedApi;
+  /** Why its proof failed, set only when state is failed: it held on an earlier environment or scenarios version, or it never held. */
+  reason: HarnessScenarioProofApiReason;
+}
+
+/**
+ * Each readiness row in by and its reason code, keyed by the row.
+ */
+export type HarnessScenarioReadinessApiReasons = { [key: string]: string };
+
+/**
+ * Present when the list is asked for readiness; null when it could not be read.
+ */
+export interface HarnessScenarioReadinessApi {
+  /** Null for a dropped scenario. */
+  bucket: HarnessScenarioReadinessApiBucket;
+  /** The readiness rows and workers that put it in its bucket. */
+  by: string[];
+  /** Each readiness row in by and its reason code, keyed by the row. */
+  reasons: HarnessScenarioReadinessApiReasons;
+  /**
+   * Why certifying the pair dropped it, as a code.
+   * @minLength 1
+   */
+  dropped: string;
+  proof: HarnessScenarioProofApi;
+  /** Whether a run sends it: not blocked and not dropped. */
+  runs: boolean;
+}
+
 export interface HarnessScenarioRowApi {
   id: string;
   scenario_id: string;
@@ -23860,6 +23934,7 @@ export interface HarnessScenarioRowApi {
   group?: string;
   /** Present while the list shows unsaved changes. */
   draft_change?: HarnessScenarioRowApiDraftChange;
+  readiness?: HarnessScenarioReadinessApi;
 }
 
 /**
@@ -44035,6 +44110,25 @@ export type SimulateApiHarnessJobsSourceUploadBody = {
   /** Repeat in file order with each repository-relative path. */
   paths: string;
   name?: string;
+};
+
+export type SimulateApiHarnessJobsScenariosParams = {
+  /**
+   * Add each scenario's readiness for the pairing the version ids name.
+   */
+  readiness?: boolean;
+  /**
+   * With readiness; the environment's default when absent.
+   */
+  agent_version_id?: string;
+  /**
+   * With readiness; the environment's default when absent.
+   */
+  environment_version_id?: string;
+  /**
+   * With readiness; the environment's default when absent.
+   */
+  suite_version_id?: string;
 };
 
 export type SimulateApiHarnessConversationsCommandsParams = {

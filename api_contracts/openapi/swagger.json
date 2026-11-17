@@ -54453,7 +54453,40 @@
                 "operationId": "simulate_api_harness-jobs_scenarios",
                 "summary": "Provider-neutral control plane for hosted ALK harness jobs.",
                 "description": "Validates the v1.6 request contract and delegates execution to the public backend selected by\n``settings.HARNESS_PROVIDER`` (``hosted`` or ``sandbox``). The hosted backend independently\nselects its managed sandbox runtime.",
-                "parameters": [],
+                "parameters": [
+                    {
+                        "name": "readiness",
+                        "in": "query",
+                        "description": "Add each scenario's readiness for the pairing the version ids name.",
+                        "required": false,
+                        "type": "boolean",
+                        "default": false
+                    },
+                    {
+                        "name": "agent_version_id",
+                        "in": "query",
+                        "description": "With readiness; the environment's default when absent.",
+                        "required": false,
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    {
+                        "name": "environment_version_id",
+                        "in": "query",
+                        "description": "With readiness; the environment's default when absent.",
+                        "required": false,
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    {
+                        "name": "suite_version_id",
+                        "in": "query",
+                        "description": "With readiness; the environment's default when absent.",
+                        "required": false,
+                        "type": "string",
+                        "format": "uuid"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "",
@@ -54471,6 +54504,7 @@
                 "tags": [
                     "simulate"
                 ],
+                "x-runtime-request-validation": true,
                 "x-runtime-response-validation": true
             },
             "parameters": [
@@ -152265,6 +152299,120 @@
                 }
             }
         },
+        "HarnessScenarioLastProved": {
+            "description": "The latest versions it was proved on, when not proved on these.",
+            "required": [
+                "environment_version",
+                "suite_version"
+            ],
+            "type": "object",
+            "properties": {
+                "environment_version": {
+                    "title": "Environment version",
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "suite_version": {
+                    "title": "Suite version",
+                    "type": "integer",
+                    "x-nullable": true
+                }
+            },
+            "x-nullable": true
+        },
+        "HarnessScenarioProof": {
+            "required": [
+                "state",
+                "last_proved",
+                "reason"
+            ],
+            "type": "object",
+            "properties": {
+                "state": {
+                    "title": "State",
+                    "type": "string",
+                    "enum": [
+                        "proved",
+                        "failed",
+                        "not_proved"
+                    ]
+                },
+                "last_proved": {
+                    "$ref": "#/definitions/HarnessScenarioLastProved"
+                },
+                "reason": {
+                    "title": "Reason",
+                    "description": "Why its proof failed, set only when state is failed: it held on an earlier environment or scenarios version, or it never held.",
+                    "type": "string",
+                    "enum": [
+                        "environment_changed",
+                        "scenarios_changed",
+                        "did_not_hold"
+                    ],
+                    "x-nullable": true
+                }
+            }
+        },
+        "HarnessScenarioReadiness": {
+            "description": "Present when the list is asked for readiness; null when it could not be read.",
+            "required": [
+                "bucket",
+                "by",
+                "reasons",
+                "dropped",
+                "proof",
+                "runs"
+            ],
+            "type": "object",
+            "properties": {
+                "bucket": {
+                    "title": "Bucket",
+                    "description": "Null for a dropped scenario.",
+                    "type": "string",
+                    "enum": [
+                        "eligible",
+                        "blocked",
+                        "stale",
+                        "untested"
+                    ],
+                    "x-nullable": true
+                },
+                "by": {
+                    "description": "The readiness rows and workers that put it in its bucket.",
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                },
+                "reasons": {
+                    "title": "Reasons",
+                    "description": "Each readiness row in by and its reason code, keyed by the row.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string",
+                        "minLength": 1,
+                        "x-nullable": true
+                    }
+                },
+                "dropped": {
+                    "title": "Dropped",
+                    "description": "Why certifying the pair dropped it, as a code.",
+                    "type": "string",
+                    "minLength": 1,
+                    "x-nullable": true
+                },
+                "proof": {
+                    "$ref": "#/definitions/HarnessScenarioProof"
+                },
+                "runs": {
+                    "title": "Runs",
+                    "description": "Whether a run sends it: not blocked and not dropped.",
+                    "type": "boolean"
+                }
+            },
+            "x-nullable": true
+        },
         "HarnessScenarioRow": {
             "required": [
                 "id",
@@ -152409,6 +152557,9 @@
                         "unchanged"
                     ],
                     "x-nullable": true
+                },
+                "readiness": {
+                    "$ref": "#/definitions/HarnessScenarioReadiness"
                 }
             }
         },

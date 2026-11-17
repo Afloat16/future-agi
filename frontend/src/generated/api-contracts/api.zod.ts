@@ -52178,6 +52178,32 @@ export const SimulateApiHarnessJobsScenariosParams = zod.object({
   id: zod.string(),
 });
 
+export const simulateApiHarnessJobsScenariosQueryReadinessDefault = false;
+
+export const SimulateApiHarnessJobsScenariosQueryParams = zod.object({
+  readiness: zod
+    .boolean()
+    .default(simulateApiHarnessJobsScenariosQueryReadinessDefault)
+    .describe(
+      "Add each scenario's readiness for the pairing the version ids name.",
+    ),
+  agent_version_id: zod
+    .string()
+    .uuid()
+    .optional()
+    .describe("With readiness; the environment's default when absent."),
+  environment_version_id: zod
+    .string()
+    .uuid()
+    .optional()
+    .describe("With readiness; the environment's default when absent."),
+  suite_version_id: zod
+    .string()
+    .uuid()
+    .optional()
+    .describe("With readiness; the environment's default when absent."),
+});
+
 export const SimulateApiHarnessJobsScenariosResponse = zod.object({
   count: zod.number(),
   next: zod.string().min(1),
@@ -52394,6 +52420,53 @@ export const SimulateApiHarnessJobsScenariosResponse = zod.object({
         .enum(["added", "changed", "unchanged"])
         .optional()
         .describe("Present while the list shows unsaved changes."),
+      readiness: zod
+        .object({
+          bucket: zod
+            .enum(["eligible", "blocked", "stale", "untested"])
+            .describe("Null for a dropped scenario."),
+          by: zod
+            .array(zod.string().min(1))
+            .describe(
+              "The readiness rows and workers that put it in its bucket.",
+            ),
+          reasons: zod
+            .record(zod.string(), zod.string().min(1))
+            .describe(
+              "Each readiness row in by and its reason code, keyed by the row.",
+            ),
+          dropped: zod
+            .string()
+            .min(1)
+            .describe("Why certifying the pair dropped it, as a code."),
+          proof: zod.object({
+            state: zod.enum(["proved", "failed", "not_proved"]),
+            last_proved: zod
+              .object({
+                environment_version: zod.number(),
+                suite_version: zod.number(),
+              })
+              .describe(
+                "The latest versions it was proved on, when not proved on these.",
+              ),
+            reason: zod
+              .enum([
+                "environment_changed",
+                "scenarios_changed",
+                "did_not_hold",
+              ])
+              .describe(
+                "Why its proof failed, set only when state is failed: it held on an earlier environment or scenarios version, or it never held.",
+              ),
+          }),
+          runs: zod
+            .boolean()
+            .describe("Whether a run sends it: not blocked and not dropped."),
+        })
+        .optional()
+        .describe(
+          "Present when the list is asked for readiness; null when it could not be read.",
+        ),
     }),
   ),
   draft: zod

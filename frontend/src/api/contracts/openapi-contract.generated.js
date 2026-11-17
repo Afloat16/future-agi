@@ -30042,10 +30042,39 @@ export const OPENAPI_CONTRACT = Object.freeze({
     "/simulate/api/harness-jobs/{id}/scenarios/": {
       get: {
         operationId: "simulate_api_harness-jobs_scenarios",
-        runtimeRequestValidation: false,
+        runtimeRequestValidation: true,
         runtimeResponseValidation: true,
         requestBody: null,
-        queryParameters: {},
+        queryParameters: {
+          readiness: {
+            required: false,
+            schema: {
+              type: "boolean",
+              default: false,
+            },
+          },
+          agent_version_id: {
+            required: false,
+            schema: {
+              type: "string",
+              format: "uuid",
+            },
+          },
+          environment_version_id: {
+            required: false,
+            schema: {
+              type: "string",
+              format: "uuid",
+            },
+          },
+          suite_version_id: {
+            required: false,
+            schema: {
+              type: "string",
+              format: "uuid",
+            },
+          },
+        },
         responses: {
           200: {
             $ref: "#/definitions/HarnessScenarioListResponse",
@@ -110236,6 +110265,9 @@ export const OPENAPI_CONTRACT = Object.freeze({
           enum: ["added", "changed", "unchanged"],
           "x-nullable": true,
         },
+        readiness: {
+          $ref: "#/definitions/HarnessScenarioReadiness",
+        },
       },
     },
     HarnessProvisionPersona: {
@@ -131448,6 +131480,57 @@ export const OPENAPI_CONTRACT = Object.freeze({
         },
       },
     },
+    HarnessScenarioReadiness: {
+      description:
+        "Present when the list is asked for readiness; null when it could not be read.",
+      required: ["bucket", "by", "reasons", "dropped", "proof", "runs"],
+      type: "object",
+      properties: {
+        bucket: {
+          title: "Bucket",
+          description: "Null for a dropped scenario.",
+          type: "string",
+          enum: ["eligible", "blocked", "stale", "untested"],
+          "x-nullable": true,
+        },
+        by: {
+          description:
+            "The readiness rows and workers that put it in its bucket.",
+          type: "array",
+          items: {
+            type: "string",
+            minLength: 1,
+          },
+        },
+        reasons: {
+          title: "Reasons",
+          description:
+            "Each readiness row in by and its reason code, keyed by the row.",
+          type: "object",
+          additionalProperties: {
+            type: "string",
+            minLength: 1,
+            "x-nullable": true,
+          },
+        },
+        dropped: {
+          title: "Dropped",
+          description: "Why certifying the pair dropped it, as a code.",
+          type: "string",
+          minLength: 1,
+          "x-nullable": true,
+        },
+        proof: {
+          $ref: "#/definitions/HarnessScenarioProof",
+        },
+        runs: {
+          title: "Runs",
+          description: "Whether a run sends it: not blocked and not dropped.",
+          type: "boolean",
+        },
+      },
+      "x-nullable": true,
+    },
     HarnessScenarioRegistrationResponse: {
       required: ["scenario_key", "scenario_id"],
       type: "object",
@@ -140920,6 +141003,28 @@ export const OPENAPI_CONTRACT = Object.freeze({
         },
       },
     },
+    HarnessScenarioProof: {
+      required: ["state", "last_proved", "reason"],
+      type: "object",
+      properties: {
+        state: {
+          title: "State",
+          type: "string",
+          enum: ["proved", "failed", "not_proved"],
+        },
+        last_proved: {
+          $ref: "#/definitions/HarnessScenarioLastProved",
+        },
+        reason: {
+          title: "Reason",
+          description:
+            "Why its proof failed, set only when state is failed: it held on an earlier environment or scenarios version, or it never held.",
+          type: "string",
+          enum: ["environment_changed", "scenarios_changed", "did_not_hold"],
+          "x-nullable": true,
+        },
+      },
+    },
     InsightAskEvidence: {
       required: ["unit_id", "quote"],
       type: "object",
@@ -142144,6 +142249,25 @@ export const OPENAPI_CONTRACT = Object.freeze({
           minLength: 1,
         },
       },
+    },
+    HarnessScenarioLastProved: {
+      description:
+        "The latest versions it was proved on, when not proved on these.",
+      required: ["environment_version", "suite_version"],
+      type: "object",
+      properties: {
+        environment_version: {
+          title: "Environment version",
+          type: "integer",
+          "x-nullable": true,
+        },
+        suite_version: {
+          title: "Suite version",
+          type: "integer",
+          "x-nullable": true,
+        },
+      },
+      "x-nullable": true,
     },
     PatternInsightEvidence: {
       type: "object",
