@@ -60,7 +60,7 @@ class BaseLoader(ABC):
             json.JSONDecodeError: If there's an issue decoding the JSON.
         """
         try:
-            with open(filename) as f:
+            with open(filename, "rb") as f:
                 self._raw_dataset = json.load(f)
                 self.process()
                 return self._processed_dataset  # type: ignore[attr-defined,no-any-return]
