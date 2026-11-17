@@ -3953,11 +3953,12 @@ def calculate_distinct_n(text, n=1, **kwargs):
     tokens = text.split()
     if len(tokens) < n:
         return {"result": 0.0, "reason": f"Text too short for {n}-grams"}
-    ngrams = [tuple(tokens[i:i + n]) for i in range(len(tokens) - n + 1)]
+    total = len(tokens) - n + 1
+    ngrams = {tuple(tokens[i:i + n]) for i in range(total)}
     if not ngrams:
         return {"result": 0.0, "reason": "No n-grams"}
-    score = len(set(ngrams)) / len(ngrams)
-    return {"result": score, "reason": f"Distinct-{n}: {score:.4f} ({len(set(ngrams))} unique / {len(ngrams)} total)"}
+    score = len(ngrams) / total
+    return {"result": score, "reason": f"Distinct-{n}: {score:.4f} ({len(ngrams)} unique / {total} total)"}
 
 
 def calculate_type_token_ratio(text, **kwargs):
@@ -3977,11 +3978,12 @@ def calculate_repetition_rate(text, n=3, **kwargs):
     n = int(n)
     if len(tokens) < n:
         return {"result": 1.0, "reason": "Text too short"}
-    ngrams = [tuple(tokens[i:i + n]) for i in range(len(tokens) - n + 1)]
+    total = len(tokens) - n + 1
+    ngrams = (tuple(tokens[i:i + n]) for i in range(total))
     from collections import Counter
     counts = Counter(ngrams)
     repeated = sum(c - 1 for c in counts.values() if c > 1)
-    rate = repeated / len(ngrams) if ngrams else 0.0
+    rate = repeated / total if total else 0.0
     score = max(0.0, 1.0 - rate)  # Higher = less repetitive = better
     return {"result": score, "reason": f"Repetition Rate: {rate:.4f} (score={score:.4f}, {repeated} repeated {n}-grams)"}
 

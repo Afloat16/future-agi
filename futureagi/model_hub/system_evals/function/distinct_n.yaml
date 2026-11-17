@@ -21,6 +21,7 @@ config:
         n = int(kwargs.get("n", 1))
         tokens = text.split()
         if len(tokens) < n: return {"score": 0.0, "reason": f"Too short for {n}-grams"}
-        ngrams = [tuple(tokens[i:i+n]) for i in range(len(tokens)-n+1)]
-        score = len(set(ngrams))/len(ngrams) if ngrams else 0.0
-        return {"score": float(score), "reason": f"Distinct-{n}: {score:.4f} ({len(set(ngrams))}/{len(ngrams)})"}
+        total = len(tokens)-n+1
+        ngrams = {tuple(tokens[i:i+n]) for i in range(total)}
+        score = len(ngrams)/total if total else 0.0
+        return {"score": float(score), "reason": f"Distinct-{n}: {score:.4f} ({len(ngrams)}/{total})"}
