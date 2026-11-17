@@ -109,9 +109,20 @@ class JsonExtractor:
                 start_idx = i
                 stack = [text[i]]
                 i += 1
+                in_string = False
+                escaped = False
 
                 while i < length and stack:
-                    if text[i] in "{[":
+                    if in_string:
+                        if escaped:
+                            escaped = False
+                        elif text[i] == "\\":
+                            escaped = True
+                        elif text[i] == '"':
+                            in_string = False
+                    elif text[i] == '"':
+                        in_string = True
+                    elif text[i] in "{[":
                         stack.append(text[i])
                     elif text[i] in "}]":
                         stack.pop()
