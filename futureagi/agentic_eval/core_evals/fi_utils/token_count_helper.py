@@ -100,7 +100,7 @@ def get_prompt_tokens_openai_chat_completion(
         for message in prompt:
             num_tokens += tokens_per_message
             for key, value in message.items():
-                num_tokens += len(encoding.encode(value))
+                num_tokens += len(encoding.encode(value, disallowed_special=()))
                 if key == "name":
                     num_tokens += tokens_per_name
         num_tokens += 3
@@ -137,7 +137,7 @@ def get_completion_tokens_openai_chat_completion(response: str, language_model_i
         return None
 
     try:
-        tokens = len(encoding.encode(response))
+        tokens = len(encoding.encode(response, disallowed_special=()))
         return tokens
     except Exception as e:
         raise e
@@ -155,7 +155,7 @@ def get_token_usage_openai_completion(text: str, language_model_id: str):
         return None
 
     try:
-        tokens = len(encoding.encode(text))
+        tokens = len(encoding.encode(text, disallowed_special=()))
         return tokens
     except Exception as e:
         raise e
