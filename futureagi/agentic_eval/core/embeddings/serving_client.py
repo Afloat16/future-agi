@@ -402,11 +402,11 @@ class ModelServingClient:
 
     def get_embeddings(
         self,
-        text: list[str],
+        text: str | list[str],
         model_provider: str,
         model_name: str,
         model_params: dict[str, Any] | None = None,
-    ) -> list[list[float]]:
+    ) -> list[float] | list[list[float]]:
         """
         Get embeddings from the model_serving API.
 
@@ -417,7 +417,7 @@ class ModelServingClient:
             model_params: Additional parameters for the model, like API keys.
 
         Returns:
-            A list of embeddings.
+            A vector for a string, or one vector per text for a list.
         """
         self._require_serving()
         endpoint = f"{self.base_url}/model/v1/infer/{model_provider}"
@@ -439,7 +439,7 @@ class ModelServingClient:
             # Handle response status codes
             if response.status_code == 200:
                 response_json = response.json()
-                if response_json["embeddings"]:
+                if isinstance(text, str) and response_json["embeddings"]:
                     if isinstance(response_json["embeddings"][0], list):
                         # import numpy as np
                         response_json["embeddings"] = response_json["embeddings"][0]
