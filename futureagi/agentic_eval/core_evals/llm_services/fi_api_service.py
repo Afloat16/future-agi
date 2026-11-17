@@ -82,6 +82,7 @@ class FiApiService:
                     "evalName": eval_name,
                     "run_type": run_type,
                 },
+                timeout=2,
             )
         except Exception:
             # Silent failure is ok here.
