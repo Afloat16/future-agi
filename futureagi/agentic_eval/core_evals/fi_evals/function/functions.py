@@ -3725,6 +3725,8 @@ def calculate_rmse(output, expected, **kwargs):
 
 def calculate_balanced_accuracy(output, expected, **kwargs):
     """Compute balanced accuracy (average recall per class)."""
+    from collections import Counter
+
     def _parse(val):
         if isinstance(val, list):
             return [str(v).lower() for v in val]
@@ -3742,11 +3744,11 @@ def calculate_balanced_accuracy(output, expected, **kwargs):
     if len(preds) != len(labels) or not labels:
         return {"result": 0.0, "reason": "Invalid input"}
     classes = sorted(set(labels))
-    recalls = []
-    for cls in classes:
-        tp = sum(1 for p, l in zip(preds, labels) if l == cls and p == cls)
-        total = sum(1 for l in labels if l == cls)
-        recalls.append(tp / total if total > 0 else 0.0)
+    totals = Counter(labels)
+    correct = Counter(
+        label for pred, label in zip(preds, labels, strict=True) if pred == label
+    )
+    recalls = [correct[cls] / totals[cls] for cls in classes]
     ba = sum(recalls) / len(recalls) if recalls else 0.0
     return {"result": ba, "reason": f"Balanced Accuracy: {ba:.4f} (avg recall across {len(classes)} classes)"}
 

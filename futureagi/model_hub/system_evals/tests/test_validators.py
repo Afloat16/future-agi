@@ -94,6 +94,25 @@ def test_log_loss_empty():
     assert r["score"] == 1.0
 
 
+@pytest.mark.parametrize("count", [100, 1000])
+def test_balanced_accuracy_counts_each_pair_once(monkeypatch, count):
+    ev = _load_eval("balanced_accuracy")
+    pairs = 0
+
+    def counted_zip(*inputs, strict=False):
+        nonlocal pairs
+        for pair in zip(*inputs, strict=strict):
+            pairs += 1
+            yield pair
+
+    monkeypatch.setitem(ev.__globals__, "zip", counted_zip)
+    labels = [str(i) for i in range(count)]
+    assert ev(None, ["0"] * count, labels, None)["score"] == 1 / count
+    assert pairs <= 2 * count
+    result = ev(None, ["a", "a", "b"], ["a", "b", "b"], None)
+    assert result["score"] == 0.75
+
+
 # ---------------------------------------------------------------------------
 # is_email
 # ---------------------------------------------------------------------------
