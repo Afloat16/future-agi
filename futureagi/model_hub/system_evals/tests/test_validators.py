@@ -94,6 +94,28 @@ def test_log_loss_empty():
     assert r["score"] == 1.0
 
 
+@pytest.mark.parametrize("value", [-1, 2, float("nan"), float("inf"), -float("inf")])
+@pytest.mark.parametrize("field", ["output", "expected"])
+def test_log_loss_rejects_invalid_domain(value, field):
+    output, expected = ([value], [1]) if field == "output" else ([0.9], [value])
+    result = _load_eval("log_loss")(None, output, expected, None)
+    assert result["score"] == 0.0
+    assert "binary labels" in result["reason"]
+
+
+@pytest.mark.parametrize("output", [[0.25, 0.75], "[0.25, 0.75]", "0.25,0.75"])
+def test_log_loss_preserves_valid_probabilities(output):
+    import math
+
+    result = _load_eval("log_loss")(None, output, [0, 1], None)
+    assert result["score"] == pytest.approx(1 / (1 - math.log(0.75)))
+
+
+def test_log_loss_rejects_nonbinary_label():
+    result = _load_eval("log_loss")(None, [0.9], [0.5], None)
+    assert result["score"] == 0.0
+
+
 # ---------------------------------------------------------------------------
 # is_email
 # ---------------------------------------------------------------------------

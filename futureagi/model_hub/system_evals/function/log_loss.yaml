@@ -35,6 +35,8 @@ config:
             return {"score": 1.0, "reason": "Both empty"}
         if len(yp) != len(yt):
             return {"score": 0.0, "reason": f"Length mismatch: {len(yp)} vs {len(yt)}"}
+        if any(not 0 <= p <= 1 for p in yp) or any(y not in (0, 1) for y in yt):
+            return {"score": 0.0, "reason": "Expected probabilities in [0, 1] and binary labels"}
         eps = 1e-15
         loss = -sum(y*math.log(max(min(p,1-eps),eps))+(1-y)*math.log(max(min(1-p,1-eps),eps)) for y,p in zip(yt,yp))/len(yt)
         return {"score": float(1/(1+loss)), "reason": f"Log Loss={loss:.4f}"}

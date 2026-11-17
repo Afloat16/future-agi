@@ -3790,6 +3790,11 @@ def calculate_log_loss(output, expected, **kwargs):
     y_true = _parse_number_list(expected)
     if len(y_pred) != len(y_true) or not y_true:
         return {"result": 0.0, "reason": "Invalid input"}
+    if any(not 0 <= p <= 1 for p in y_pred) or any(y not in (0, 1) for y in y_true):
+        return {
+            "result": 0.0,
+            "reason": "Expected probabilities in [0, 1] and binary labels",
+        }
     eps = 1e-15
     loss = -sum(yt * math.log(max(min(yp, 1 - eps), eps)) + (1 - yt) * math.log(max(min(1 - yp, 1 - eps), eps))
                for yt, yp in zip(y_true, y_pred)) / len(y_true)
