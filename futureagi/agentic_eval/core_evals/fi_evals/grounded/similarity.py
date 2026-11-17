@@ -51,24 +51,23 @@ class NormalisedLevenshteinSimilarity(Comparator):
 
     def _normalised_levenshtein_distance(self, str1, str2):
         m, n = len(str1), len(str2)
-        # Create a matrix to store the distances
-        dp = [[0] * (n + 1) for _ in range(m + 1)]
-        # Initialize the first row and first column
-        for i in range(m + 1):
-            dp[i][0] = i
-        for j in range(n + 1):
-            dp[0][j] = j
-        # Calculate the distance
-        for i in range(1, m + 1):
-            for j in range(1, n + 1):
-                if str1[i - 1] == str2[j - 1]:
-                    dp[i][j] = dp[i - 1][j - 1]
-                else:
-                    dp[i][j] = 1 + min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
-        if len(str1) >= len(str2):
-            return dp[m][n] / len(str1)
-        else:
-            return dp[m][n] / len(str2)
+        if m < n:
+            str1, str2 = str2, str1
+            m, n = n, m
+        # Only the preceding row is needed; keep the shorter string on this axis.
+        previous = list(range(n + 1))
+        for i, char1 in enumerate(str1, 1):
+            current = [i]
+            for j, char2 in enumerate(str2, 1):
+                current.append(
+                    min(
+                        previous[j] + 1,
+                        current[-1] + 1,
+                        previous[j - 1] + (char1 != char2),
+                    )
+                )
+            previous = current
+        return previous[n] / m
 
 
 class JaroWincklerSimilarity(Comparator):
