@@ -1,6 +1,7 @@
 import math
 import re
 from abc import ABC, abstractmethod
+from collections import Counter
 
 
 class Comparator(ABC):
@@ -40,8 +41,8 @@ class CosineSimilarity(Comparator):
         return set(self._tokenize(string1)).union(set(self._tokenize(string2)))
 
     def _vectorize(self, string, combined_set):
-        tokenized = self._tokenize(string)
-        vector = [tokenized.count(word) for word in combined_set]
+        counts = Counter(self._tokenize(string))
+        vector = [counts[word] for word in combined_set]
         return vector
 
 
