@@ -3713,12 +3713,16 @@ def calculate_r2_score(output, expected, **kwargs):
 
 def calculate_rmse(output, expected, **kwargs):
     """Compute Root Mean Squared Error. Returns 1/(1+RMSE) as score."""
+    import math
     y_pred = _parse_number_list(output)
     y_true = _parse_number_list(expected)
     if len(y_pred) != len(y_true) or not y_true:
         return {"result": 0.0, "reason": "Invalid input"}
-    mse = sum((yt - yp) ** 2 for yt, yp in zip(y_true, y_pred)) / len(y_true)
-    rmse = mse ** 0.5
+    root_n = math.sqrt(len(y_true))
+    def scaled_error(a, b):
+        delta = a - b
+        return delta / root_n if math.isfinite(delta) else a / root_n - b / root_n
+    rmse = math.hypot(*map(scaled_error, y_true, y_pred))
     score = 1.0 / (1.0 + rmse)
     return {"result": score, "reason": f"RMSE={rmse:.4f}, score={score:.4f}"}
 

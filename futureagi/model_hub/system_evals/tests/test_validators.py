@@ -94,6 +94,29 @@ def test_log_loss_empty():
     assert r["score"] == 1.0
 
 
+@pytest.mark.parametrize(
+    "output,expected",
+    [
+        ([1e155], [0]),
+        ([1e200, -1e200], [0, 0]),
+        ([1e308] * 4, [0] * 4),
+        ([1e308, 0, 0, 0], [-1e308, 0, 0, 0]),
+        ([1e308, 0], [1.0000000000000002e308, 0]),
+        ([3, 4], [0, 0]),
+    ],
+)
+def test_rmse_avoids_intermediate_overflow(output, expected):
+    from decimal import Decimal, localcontext
+
+    with localcontext() as ctx:
+        ctx.prec = 80
+        deltas = [Decimal(a) - Decimal(b) for a, b in zip(output, expected)]
+        rmse = (sum(d * d for d in deltas) / len(deltas)).sqrt()
+        score = float(1 / (1 + rmse))
+    result = _load_eval("rmse")(None, output, expected, None)
+    assert result["score"] == pytest.approx(score, rel=1e-14, abs=0)
+
+
 # ---------------------------------------------------------------------------
 # is_email
 # ---------------------------------------------------------------------------
