@@ -352,6 +352,7 @@ class ModelServingClient:
 
             # Convert list to numpy array
             audio_array = np.array(audio_data, dtype=np.float32)
+            audio_array = np.clip(audio_array, -1, 1)
 
             # Create a temporary WAV file in memory
             buffer = io.BytesIO()
@@ -369,6 +370,7 @@ class ModelServingClient:
             import io
             import wave
 
+            audio_data = np.clip(audio_data, -1, 1)
             # Create a temporary WAV file in memory
             buffer = io.BytesIO()
             with wave.open(buffer, "wb") as wav_file:
