@@ -165,19 +165,17 @@ class PhoneticSimilarity(Comparator):
             return "0000"
 
         first_letter = word[0]
-        first_code = self.SOUNDEX_MAP.get(first_letter, "")
+        previous_code = self.SOUNDEX_MAP.get(first_letter, "")
 
         encoded_tail = []
         for char in word[1:]:
+            # H and W do not separate matching consonants, but vowels do.
+            if char in "HW":
+                continue
             code = self.SOUNDEX_MAP.get(char, "")
-            if not code:
-                continue
-            # Skip if same as previous code OR matches first letter's code on first entry
-            if encoded_tail and encoded_tail[-1] == code:
-                continue
-            if not encoded_tail and code == first_code:
-                continue
-            encoded_tail.append(code)
+            if code and code != previous_code:
+                encoded_tail.append(code)
+            previous_code = code
 
         soundex = (first_letter + "".join(encoded_tail) + "000")[:4]
         return soundex
