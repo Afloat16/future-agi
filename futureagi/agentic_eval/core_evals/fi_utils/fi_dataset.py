@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from agentic_eval.core_evals.llm_services.fi_api_service import FiApiService
@@ -28,7 +28,7 @@ class Dataset:
         description: str | None = None,
         language_model_id: str | None = None,
         prompt_template: Any | None = None,
-        rows: list[DatasetRow] | None = None,
+        rows: list[DatasetRow | dict] | None = None,
     ):
         """
         Creates a new dataset with the specified properties.
@@ -50,7 +50,14 @@ class Dataset:
             "description": description,
             "language_model_id": language_model_id,
             "prompt_template": prompt_template,
-            "dataset_rows": rows or [],
+            "dataset_rows": [
+                (
+                    {k: v for k, v in asdict(row).items() if v is not None}
+                    if isinstance(row, DatasetRow)
+                    else row
+                )
+                for row in (rows or [])
+            ],
         }
 
         # Remove keys where the value is None
